@@ -1,0 +1,28 @@
+# This builds the tensorrt docker file 
+# docker build -t tensorface2 -f Dockerfile.tensorface2 .
+# to run this container, do:
+# on the host:
+# make sure you're in the X environment
+# xhost + 
+# docker run --rm --privileged -p 8888:8888 -e DISPLAY -v /tmp:/tmp -ti tensorface2 bash
+# mount mybucket 
+# chmod 777 store.sh
+# .\ store.sh
+
+FROM w251/keras:dev-tx2-4.2.1_b97-py3
+
+RUN apt update
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt install -y python-pip vim python3-opencv
+
+RUN pip3 install --upgrade pip
+
+WORKDIR /
+
+COPY tensor.py .
+COPY store.sh .
+COPY frozen_inference_graph_face.pb .
+
+CMD python3 tensor.py

@@ -1,0 +1,20 @@
+# This builds the tensorrt docker file 
+# docker build -t saveimage -f Dockerfile.saveimage .
+# to run this container, do:
+# docker run --rm --privileged -v /tmp:/tmp -ti saveimage bash
+
+FROM ubuntu
+
+RUN apt update && apt install python3-matplotlib python3-pil wget -y
+
+RUN apt install -y python-opencv vim-tiny libopencv-dev
+RUN pip install ibm_boto3
+RUN pip install paho-mqtt
+
+RUN pip install Pillow
+
+WORKDIR /
+
+COPY img_process.py .
+
+CMD python img_process.py

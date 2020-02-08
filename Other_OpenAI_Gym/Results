@@ -1,0 +1,272 @@
+*** Base Model ***
+
+### lunar_lander.py
+def nnmodel(input_dim):
+    model = Sequential()
+    model.add(Dense(32, input_dim=input_dim, activation='relu'))
+    model.add(Dense(16, activation='sigmoid'))
+    model.add(Dense(1))
+    model.compile(loss='mean_squared_error', optimizer='adam', metrics=['accuracy'])
+    return model
+
+### run_lunar_lander.py
+    # Initialize lunar lander environment
+    env = LunarLanderContinuous()
+    prev_s = env.reset()
+    total_reward = 0
+    steps = 0
+    a = np.array([0.0,0.0])
+    modelTrained = False
+    model = nnmodel(10)
+    tr = 0
+    prev_r = 0
+    training_thr = 3000
+    total_itrs = 50000
+    successful_steps = []
+
+
+Number of successful landings: 46
+
+*** Test 1 - training threshold 10000 ***
+
+### lunar_lander.py
+def nnmodel(input_dim):
+    model = Sequential()
+    model.add(Dense(32, input_dim=input_dim, activation='relu'))
+    model.add(Dense(16, activation='sigmoid'))
+    model.add(Dense(1))
+    model.compile(loss='mean_squared_error', optimizer='adam', metrics=['accuracy'])
+    return model
+
+### run_lunar_lander.py
+    # Initialize lunar lander environment
+    env = LunarLanderContinuous()
+    prev_s = env.reset()
+    total_reward = 0
+    steps = 0
+    a = np.array([0.0,0.0])
+    modelTrained = False
+    model = nnmodel(10)
+    tr = 0
+    prev_r = 0
+    training_thr = 10000
+    total_itrs = 50000
+    successful_steps = []
+
+
+Number of successful landings: Cannot allocate memory beyond step 9900. total successes 9
+- no videos created
+
+*** Test 2 - training threshold 1000 ***
+
+### lunar_lander.py
+def nnmodel(input_dim):
+    model = Sequential()
+    model.add(Dense(32, input_dim=input_dim, activation='relu'))
+    model.add(Dense(16, activation='sigmoid'))
+    model.add(Dense(1))
+    model.compile(loss='mean_squared_error', optimizer='adam', metrics=['accuracy'])
+    return model
+
+### run_lunar_lander.py
+    # Initialize lunar lander environment
+    env = LunarLanderContinuous()
+    prev_s = env.reset()
+    total_reward = 0
+    steps = 0
+    a = np.array([0.0,0.0])
+    modelTrained = False
+    model = nnmodel(10)
+    tr = 0
+    prev_r = 0
+    training_thr = 1000
+    total_itrs = 50000
+    successful_steps = []
+
+
+Number of successful landings: 59
+
+training model model
+Epoch 1/10
+50001/50001 [==============================] - 21s 425us/step - loss: 169.4353 - accuracy: 0.0000e+00
+Epoch 2/10
+50001/50001 [==============================] - 25s 496us/step - loss: 169.3714 - accuracy: 0.0000e+00
+Epoch 3/10
+50001/50001 [==============================] - 25s 498us/step - loss: 169.2594 - accuracy: 0.0000e+00
+Epoch 4/10
+50001/50001 [==============================] - 25s 498us/step - loss: 168.8645 - accuracy: 0.0000e+00
+Epoch 5/10
+50001/50001 [==============================] - 25s 496us/step - loss: 168.5857 - accuracy: 0.0000e+00
+Epoch 6/10
+50001/50001 [==============================] - 25s 492us/step - loss: 168.9387 - accuracy: 0.0000e+00
+Epoch 7/10
+50001/50001 [==============================] - 25s 494us/step - loss: 168.7493 - accuracy: 0.0000e+00
+Epoch 8/10
+50001/50001 [==============================] - 25s 496us/step - loss: 168.8894 - accuracy: 0.0000e+00
+Epoch 9/10
+50001/50001 [==============================] - 25s 492us/step - loss: 168.3803 - accuracy: 0.0000e+00
+Epoch 10/10
+50001/50001 [==============================] - 25s 496us/step - loss: 168.2450 - accuracy: 0.0000e+00
+At step  50000
+reward:  9.80533234562971
+total rewards  -149.84886558978312
+
+*** Test 3 - mid layer activation change from sigmoid to relu ***
+
+### lunar_lander.py
+def nnmodel(input_dim):
+    model = Sequential()
+    model.add(Dense(32, input_dim=input_dim, activation='relu'))
+    model.add(Dense(16, activation='relu'))
+    model.add(Dense(1))
+    model.compile(loss='mean_squared_error', optimizer='adam', metrics=['accuracy'])
+    return model
+
+### run_lunar_lander.py
+    # Initialize lunar lander environment
+    env = LunarLanderContinuous()
+    prev_s = env.reset()
+    total_reward = 0
+    steps = 0
+    a = np.array([0.0,0.0])
+    modelTrained = False
+    model = nnmodel(10)
+    tr = 0
+    prev_r = 0
+    training_thr = 1000
+    total_itrs = 50000
+    successful_steps = []
+
+
+Number of successful landings: 48
+
+Epoch 1/10
+50001/50001 [==============================] - 26s 514us/step - loss: 138.1926 - accuracy: 2.0000e-05
+Epoch 2/10
+50001/50001 [==============================] - 26s 512us/step - loss: 138.3732 - accuracy: 0.0000e+00
+Epoch 3/10
+50001/50001 [==============================] - 26s 514us/step - loss: 138.2432 - accuracy: 0.0000e+00
+Epoch 4/10
+50001/50001 [==============================] - 26s 511us/step - loss: 138.2974 - accuracy: 2.0000e-05
+Epoch 5/10
+50001/50001 [==============================] - 25s 510us/step - loss: 138.1108 - accuracy: 2.0000e-05
+Epoch 6/10
+50001/50001 [==============================] - 26s 511us/step - loss: 138.3835 - accuracy: 0.0000e+00
+Epoch 7/10
+50001/50001 [==============================] - 26s 512us/step - loss: 137.8811 - accuracy: 0.0000e+00
+Epoch 8/10
+50001/50001 [==============================] - 25s 504us/step - loss: 137.6629 - accuracy: 2.0000e-05
+Epoch 9/10
+50001/50001 [==============================] - 25s 508us/step - loss: 137.8862 - accuracy: 0.0000e+00
+Epoch 10/10
+50001/50001 [==============================] - 25s 507us/step - loss: 137.6861 - accuracy: 0.0000e+00
+At step  50000
+reward:  -7.190147760411362
+total rewards  -153.12191363806434
+
+*** Test 4 - number of iterations ***
+
+### lunar_lander.py
+def nnmodel(input_dim):
+    model = Sequential()
+    model.add(Dense(32, input_dim=input_dim, activation='relu'))
+    model.add(Dense(16, activation='sigmoid'))
+    model.add(Dense(1))
+    model.compile(loss='mean_squared_error', optimizer='adam', metrics=['accuracy'])
+    return model
+
+### run_lunar_lander.py
+    # Initialize lunar lander environment
+    env = LunarLanderContinuous()
+    prev_s = env.reset()
+    total_reward = 0
+    steps = 0
+    a = np.array([0.0,0.0])
+    modelTrained = False
+    model = nnmodel(10)
+    tr = 0
+    prev_r = 0
+    training_thr = 1000
+    total_itrs = 100000
+    successful_steps = []
+
+
+Number of successful landings: 82
+
+training model model
+Epoch 1/10
+100001/100001 [==============================] - 51s 507us/step - loss: 168.1629 - accuracy: 0.0000e+00
+Epoch 2/10
+100001/100001 [==============================] - 51s 505us/step - loss: 167.5139 - accuracy: 0.0000e+00
+Epoch 3/10
+100001/100001 [==============================] - 51s 507us/step - loss: 167.9981 - accuracy: 0.0000e+00
+Epoch 4/10
+100001/100001 [==============================] - 50s 501us/step - loss: 167.7252 - accuracy: 0.0000e+00
+Epoch 5/10
+100001/100001 [==============================] - 50s 505us/step - loss: 167.8057 - accuracy: 2.0000e-05
+Epoch 6/10
+100001/100001 [==============================] - 51s 507us/step - loss: 167.6888 - accuracy: 0.0000e+00
+Epoch 7/10
+100001/100001 [==============================] - 50s 503us/step - loss: 167.3840 - accuracy: 2.0000e-05
+Epoch 8/10
+100001/100001 [==============================] - 51s 506us/step - loss: 168.0426 - accuracy: 9.9999e-06
+Epoch 9/10
+100001/100001 [==============================] - 50s 504us/step - loss: 167.8691 - accuracy: 0.0000e+00
+Epoch 10/10
+100001/100001 [==============================] - 51s 507us/step - loss: 167.5678 - accuracy: 9.9999e-06
+At step  100000
+reward:  0.5750939165541894
+total rewards  238.2611920891906
+
+*** Test 5 - optimizer change ***
+
+### lunar_lander.py
+def nnmodel(input_dim):
+    model = Sequential()
+    model.add(Dense(32, input_dim=input_dim, activation='relu'))
+    model.add(Dense(16, activation='sigmoid'))
+    model.add(Dense(1))
+    model.compile(loss='mean_squared_error', optimizer='adamax', metrics=['accuracy'])
+    return model
+
+### run_lunar_lander.py
+    # Initialize lunar lander environment
+    env = LunarLanderContinuous()
+    prev_s = env.reset()
+    total_reward = 0
+    steps = 0
+    a = np.array([0.0,0.0])
+    modelTrained = False
+    model = nnmodel(10)
+    tr = 0
+    prev_r = 0
+    training_thr = 1000
+    total_itrs = 50000
+    successful_steps = []
+
+Number of successful landings: 14
+
+Epoch 1/10
+50001/50001 [==============================] - 24s 477us/step - loss: 210.7479 - accuracy: 0.0000e+00
+Epoch 2/10
+50001/50001 [==============================] - 24s 473us/step - loss: 210.6557 - accuracy: 0.0000e+00
+Epoch 3/10
+50001/50001 [==============================] - 23s 468us/step - loss: 210.1712 - accuracy: 0.0000e+00
+Epoch 4/10
+50001/50001 [==============================] - 24s 473us/step - loss: 210.2974 - accuracy: 0.0000e+00
+Epoch 5/10
+50001/50001 [==============================] - 24s 471us/step - loss: 210.0610 - accuracy: 0.0000e+00
+Epoch 6/10
+50001/50001 [==============================] - 24s 473us/step - loss: 210.1734 - accuracy: 0.0000e+00
+Epoch 7/10
+50001/50001 [==============================] - 24s 473us/step - loss: 210.0511 - accuracy: 0.0000e+00
+Epoch 8/10
+50001/50001 [==============================] - 24s 472us/step - loss: 209.6960 - accuracy: 0.0000e+00
+Epoch 9/10
+50001/50001 [==============================] - 24s 475us/step - loss: 209.8520 - accuracy: 0.0000e+00
+Epoch 10/10
+50001/50001 [==============================] - 24s 471us/step - loss: 209.4302 - accuracy: 0.0000e+00
+At step  50000
+reward:  -5.671045986101406
+total rewards  -197.8816104551757
+

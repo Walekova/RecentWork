@@ -1,0 +1,18 @@
+FROM ubuntu
+
+# build this: e.g docker build -t forward -f Dockerfile.forward .
+# to run this container, do:
+# docker run -d --name forward --network bridge forward
+
+
+RUN apk update && apk add py-pip 
+
+RUN apk add mosquitto-clients
+
+RUN pip install paho-mqtt
+
+EXPOSE 1883
+
+WORKDIR /
+
+COPY msg_fwd.py .

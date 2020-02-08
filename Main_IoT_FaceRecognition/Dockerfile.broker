@@ -1,0 +1,9 @@
+FROM alpine:3.7
+
+# build this: e.g docker build -t broker -f Dockerfile.broker .
+# to run this container, do:
+# docker run -d --name broker -p 1883:1883 --network bridge broker
+
+RUN apk update && apk add mosquitto
+
+EXPOSE 1883
