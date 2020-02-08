@@ -1,0 +1,41 @@
+﻿IconNumber,Day,Night,Text
+1,Yes,No,Sunny
+2,Yes,No,Mostly Sunny
+3,Yes,No,Partly Sunny
+4,Yes,No,Intermittent Clouds
+5,Yes,No,Hazy Sunshine
+6,Yes,No,Mostly Cloudy
+7,Yes,Yes,Cloudy
+8,Yes,Yes,Dreary (Overcast)
+11,Yes,Yes,Fog
+12,Yes,Yes,Showers
+13,Yes,No,Mostly Cloudy w/ Showers
+14,Yes,No,Partly Sunny w/ Showers
+15,Yes,Yes,T-Storms
+16,Yes,No,Mostly Cloudy w/ T-Storms
+17,Yes,No,Partly Sunny w/ T-Storms
+18,Yes,Yes,Rain
+19,Yes,Yes,Flurries
+20,Yes,No,Mostly Cloudy w/ Flurries
+21,Yes,No,Partly Sunny w/ Flurries
+22,Yes,Yes,Snow
+23,Yes,No,Mostly Cloudy w/ Snow
+24,Yes,Yes,Ice
+25,Yes,Yes,Sleet
+26,Yes,Yes,Freezing Rain
+29,Yes,Yes,Rain and Snow
+30,Yes,Yes,Hot
+31,Yes,Yes,Cold
+32,Yes,Yes,Windy
+33,No,Yes,Clear
+34,No,Yes,Mostly Clear
+35,No,Yes,Partly Cloudy
+36,No,Yes,Intermittent Clouds
+37,No,Yes,Hazy Moonlight
+38,No,Yes,Mostly Cloudy
+39,No,Yes,Partly Cloudy w/ Showers
+40,No,Yes,Mostly Cloudy w/ Showers
+41,No,Yes,Partly Cloudy w/ T-Storms
+42,No,Yes,Mostly Cloudy w/ T-Storms
+43,No,Yes,Mostly Cloudy w/ Flurries
+44,No,Yes,Mostly Cloudy w/ Snow

@@ -1,0 +1,920 @@
+---
+geometry: margin=2.0cm
+header-includes:
+- \usepackage{graphicx}
+- \usepackage{fancyhdr}
+- \usepackage{amssymb}
+- \usepackage{amsmath}
+- \usepackage{bm}
+- \usepackage{enumerate}
+- \pagestyle{fancy}
+- \fancyhf{}
+- \rhead{Walekova, Graf}
+- \lhead{W203}
+- \fancyfoot{}
+- \fancyfoot[R]{\thepage}
+output: 
+  pdf_document:
+    fig_crop: false
+---
+
+\centerline{\Large{\textbf{W203 Lab 3 - Reducing Crime}}}
+\bigskip
+\centerline{\large{\textbf{Mikra Walekova | Dominik Graf}}}
+
+\thispagestyle{empty}
+
+```{r setup, include=FALSE}
+if (Sys.info()[['nodename']] == 'dgraf' ) {
+  setwd('~/Berkeley/w203/lab_3/')
+  raw_data <- read.csv('crime_v2.csv', stringsAsFactors = FALSE)
+} else if (Sys.info()[['nodename']] %in% c('Dominiks-MBP.home', 'Dominiks-MacBook-Pro.local', 'Dominiks-MBP')) {
+  setwd('~/Documents/Berkeley/w203/github/lab_3/')
+  raw_data <- read.csv('crime_v2.csv', stringsAsFactors = FALSE)
+} else if (Sys.info()[['nodename']] %in% c('W7-BLOOM-GZ')) {
+  setwd('k:/willerfunds/dominik/misc/berkeley/w203/')
+  raw_data <- read.csv('crime_v2.csv', stringsAsFactors = FALSE)
+} else {
+  setwd('C:/Users/walek/Desktop/W203A/Lab 3')
+  raw_data = read.csv("crime_v2.csv", header = TRUE, stringsAsFactors = FALSE)
+}
+
+raw_data = read.csv("crime_v2.csv", header = TRUE, stringsAsFactors = FALSE)
+
+suppressMessages(library(e1071))
+suppressMessages(library(car))
+suppressMessages(library(knitr))
+suppressMessages(library(stargazer))
+suppressMessages(library(DMwR))
+suppressMessages(library(Matrix))
+suppressMessages(library(xtable))
+suppressMessages(library(corrplot))
+options(xtable.comment = FALSE)
+suppressMessages(library(magrittr))
+suppressMessages(library(lmtest))
+suppressMessages(library(plm))
+
+```
+
+
+## Introduction
+
+```{r, include=FALSE}
+#Is the introduction clear? - What do you want to measure? 
+#Is the research question specific and well defined? 
+#Could the research question lead to an actionable policy reccomendation? 
+#Does it motivate the analysis? 
+#Note that we're not necessarily expecting a long introduction. Even a single paragraph is probably enough for most reports.
+```
+
+In this paper, we are going to review the factors that drive local crime rate intending to identify factors that are within the control or influence of local government to propose policies that could lead to a reduction of local crime. These policy recommendations are intended for local political campaigns in North Carolina.
+
+```{r, include=FALSE }
+#Generic overview and variable selection to support our analysis
+#- Make sure you identify variables that will be relevant to the concerns of the political campaign.
+
+#Did the team notice any anomalous values? 
+#- Examine variables (histograms)
+#- Summary of variables
+
+#Did the report note any coding features that affect the meaning of variables (e.g. top-coding or bottom-coding)? 
+
+#Overall, does the report demonstrate a thorough understanding of the data?
+```
+
+## Data Loading
+
+The following study is based on a single cross-section of data, a selection of North Carolina counties, of a multi-year panel, of which only data from 1987 are used in this study. Panel data is known to have limitations (i.e. unabalanced panels with non-randomly missing data), and therefore, our ability to make inferences about the population based on this data set is limited. 
+
+```{r, include=FALSE}
+raw_data <- read.csv('crime_v2.csv', stringsAsFactors = FALSE)
+```
+
+There are six blank records and one duplicate record in the source file which are removed.
+
+```{r}
+raw_data <- raw_data[!is.na(raw_data$year), ]
+raw_data <- raw_data[!duplicated(raw_data), ]
+```
+
+This reduces the dataset from `r dim(raw_data)[1] + 7` to `r dim(raw_data)[1]` records. A second thing we notice when loading the dataset is that the \textbf{prbconv} variable is read in as a character string even though all the values are numbers. Therefore, we convert the variable type to numeric.
+
+```{r}
+raw_data$prbconv <- as.numeric(raw_data$prbconv)
+```
+
+```{r, results = 'asis', echo = FALSE}
+summary_raw_data <- data.frame(t(do.call(cbind, lapply(raw_data, summary))))
+Explanation <- c('County identifier', 'Year', 'Crimes committed per person', 
+  'Prob. of arrest', 'Prob. of conviction', 'Prob. of prison sentence', 
+  'Avg. prison sentence (days)', 'Police per capita','People per 100 sq. miles',
+  'Tax tevenue per capita', 'Is west', 'Is central', 'Is urban','% minority', 
+  'Wage: Construction', 'Wage: Trns, util, commun', 'Wage: Wholesale retail trade', 
+  'Wage: Finance, insurance, real estate', 'Wage: Service industry', 
+  'Wage: Manufacturing', 'Wage: Federal employees', 'Wage: State employees', 
+  'Wage: Local government employees', 'Face-to-face / other crime mix', 'Young male %')
+summary_data <- data.frame(summary_raw_data[,c(1, 3, 4, 6)], Explanation)
+stargazer(summary_data, digits = 4, summary = FALSE, float = FALSE, header = FALSE)
+```
+
+The __county__ variable represents a unique numeric identifier covering `r length(unique(raw_data$county))` unique counties. The __year__ interval variable shows the year 1987 for all records. Looking at the rest, __crmrte__, __polpc__, __density__, __taxpc__, __mix__ are ratio variables representing a ratio; __prbarr__, __prbconv__, __prbpris__, __pctmin80__, __pctymle__ are ratio variables representing percentages; __west__, __central__, __urban__ are 0-1 coded dummy variables; and __avgsen__, __wcon__, __wtuc__, __wtrd__, __wfir__, __wser__, __wmfg__, __wfed__, __wsta__, __wloc__ are ratio variables representing an average (measure of central tendency). The wage variables are given as weekly wages. For the three dummy variables (__west__, __central__, __urban__), we read their 0-1 coding as false-true. The table above gives an explanation for each variable.
+
+One important thing we notice is that __density__ is not given as people per square mile. This becomes important in the next section when we clean our data as there is one anomalous point in this variable. When we look online, we see that North Carolina has a surface area of 53,818 square miles while the population of the state in 1987 was approximately 6,481,000. This implies that the average density in the state was around 120.4 people per square mile in 1987. When we look at our dataset though, we see an average density value of `r sprintf('%.2f',mean(raw_data$density))` and a maximum density of `r sprintf('%.2f',max(raw_data$density))`, therefore, something does seem right. We suspect that the __density__ variable is actually in terms of 100 people per square mile.
+
+We notice that the __pctmin80__ variable uses data from 1980 even though our cross-sectional data is from 1987. Thus, there is a bit of a mismatch here. It is possible that the percentage of minorities changed over seven years and therefore using this variable could lead to "garbage in, garbage out". We couldn't find minority population data for the state of North Carolina but we did look at the national change from the 1980 to 1990 census. We assume the change in the national percentage of minorities is indicative of the change in the state. From 1980 the percent of minorities increased from 20.4% to 24.4% in 1990. We do not believe this is a large enough change to be of significance. For this reason, we believe __pctmin80__ (from 1980) is a fairly good representation of the actual percentages in 1987.
+
+Furthermore, we see that our dataset has 90 counties, while the state of North Carolina has 100 counties. Therefore, we are missing 10%. Since we are missing some counties and do not know how to weight the importance of each county (e.g. by population) within the state, we do not feel comfortable making assertions at the state level, instead we keep the inferences we make at the county level. At the county level, we consider 90 our to 100 counties as a sufficient sample size.
+
+```{r, results = 'asis', echo = FALSE, eval = FALSE}
+variable <- c('prbarr', 'prbconv', 'prbpris', 'avgsen', 'polpc', 'taxpc', 'wloc')
+exp_relation <- c('Negative', 'Negative', 'Negative', 'Negative', 'Negative', 'Negative', 'Unsure')
+why <- c('Risk to committing crime', 'Risk to committing crime', 'Risk to committing crime', 'Risk to committing crime', 'Risk to committing crime', 'Increase police presence', 'n.a.')
+influence <- c(
+  'Prioritize local law enforcement to focus on making arrests.',
+  'Implement more robust procedures for evidence collection and speed up court process for convictions.',
+  'Push/lobby to make more criminal offenses punishable by prison sentence.',
+  'Push/lobby to increase prison sentences.',
+  'Increase spending on law enforcement to increase police presence.',
+  'Increase personal/corporate tax rates to fund police presence.',
+  'Increase wages for local government employees.'
+)
+tab <- data.frame(list(variable, exp_relation, why, influence))
+names(tab) <- c('Variable', 'Expected Relation with Crime', 'Why?', 'Local Government Influence')
+
+kable(tab, booktabs=TRUE, align = c('l','c','c','l')) %>%
+  kable_styling(full_width = FALSE) %>%
+  column_spec(1, bold = TRUE) %>%
+  column_spec(2, width = '3cm') %>%
+  column_spec(3, width = '4cm') %>%
+  column_spec(4, width = '7cm') %>%
+  row_spec(0, bold = TRUE)
+```
+
+## Data Cleaning
+
+```{r, tidy = TRUE, results = 'asis', eval = FALSE, echo = FALSE}
+summary_raw_data <- data.frame(t(do.call(cbind, lapply(raw_data, summary))))
+Explanation <- c('County identifier', 'Year', 'Crimes committed per person', 
+  'Prob. of arrest', 'Prob. of conviction', 'Prob. of prison sentence', 
+  'Avg. prison sentence (days)', 'Police per capita','People per sq. mile',
+  'Tax revenue per capita', 'Is west', 'Is central', 'Is urban','% minority', 
+  'Wage - construction', 'Wage - trns, util, commun', 'Wage: wholesale retail trade', 
+  'Wage - finance, insurance, real estate', 'Wage: service industry', 
+  'Wage - manufacturing', 'Wage - federal employees', 'Wage - state employees', 
+  'Wage - local government employees', 'Face-to-face / other crime mix', 'Young male %')
+Gov_Control <- c('n.a.','n.a.','n.a.','Yes','Yes','Yes','Yes','Yes','No','Yes','No',
+                 'No','No','No','No','No','No','No','No','No','Yes','Yes','Yes','No','No')
+summary_data <- data.frame(summary_raw_data[,c(1, 3, 4, 6)], Explanation, Gov_Control)
+names(summary_data)[6] <- 'Gov. Control'
+stargazer(summary_data, digits = 4, summary = FALSE, float = FALSE, header = FALSE)
+```
+
+In this section, we detect and correct corrupt or inaccurate records. 
+
+Starting with __prbarr__ and __prbconv__, we notice values above 1, implying the probability of arrest or conviction is above 100%. This is not intuitive, and the reason for this lies in the proxy for these variables. The __prbarr__ is proxied by the ratio of arrests to offences in a given year so it is possible that in a given year there could be a backlog of offence cases originating from previous years for which arrests are made in the current year. Therefore, the total offences for which arrests can be made is greater than or equal to the number of offences in a given year, resulting in the possibility of the number of arrests in a year being higher than the number of offences in a year. The same logic applies to the __prbconv__, which is proxied by the ratio of convictions to arrests. To correct this, we top-code the two variables by setting an upper bound of 1 (or 100%). 
+
+```{r, fig.align='center', fig.height=3.3, fig.width=8, tidy = TRUE, echo = FALSE}
+plot(raw_data$prbarr, raw_data$prbconv, pch = 20, main = 'probabilities above 100%', 
+     xlab = 'prbarr', ylab = 'prbconv')
+abline(h = 1, lty = 2); abline(v = 1, lty = 2)
+index <- pmax(raw_data$prbarr, raw_data$prbconv) > 1
+symbols(x = raw_data$prbarr[index], y = raw_data$prbconv[index], circles = rep(1.5 / 100, sum(index)), 
+        add = TRUE, fg = 'red', lwd = 2, inches = FALSE)
+```
+
+This affects `r sum(raw_data$prbarr>1)` __prbarr__ observation and `r sum(raw_data$prbconv>1)` __prbconv__ observations.
+
+```{r}
+raw_data$prbarr <- pmin(1, raw_data$prbarr)
+raw_data$prbconv <- pmin(1, raw_data$prbconv)
+```
+
+Furthermore, for easier readability and interpretation later in the report, we scale up the \textbf{prbarr}, \textbf{prbconv}, \textbf{prbpris} and \textbf{pctymle} percentage variables by 100 so that an increase of 1 corresponds to 1% (__pctmin80__ is already scaled by 100).
+
+```{r, echo = FALSE}
+prb_vars <- c('prbarr', 'prbconv', 'prbpris', 'pctymle')
+raw_data[, prb_vars] <- raw_data[, prb_vars] * 100
+```
+
+Another anomalous value we see is in __density__ where the smallest value is `r sprintf('%.5f', min(raw_data$density))`, which is `r sprintf('%.5f', min(raw_data$density))` $\times$ 100 = `r sprintf('%.5f', min(raw_data$density)*100)` people per square mile. This is a an extremely small number with the second smallest density being `r sprintf('%.5f', min(raw_data$density[-which.min(raw_data$density)]))` which is `r sprintf('%.0f', min(raw_data$density[-which.min(raw_data$density)]) / min(raw_data$density))`x bigger. For there to be 1 person living in the county this record is representing, the surface area of the county would have to be ($1 / (0.00203)$) `r sprintf('%.0f', 1 / (100 * min(raw_data$density)))` square miles. When we look online, we see that the surface areas of the counties in North Carolina range from 172 square miles (Chowan) to 949 square miles (Robeson). Therefore, if this density value were to represent the largest county (Robeson), it would mean only 2 people ($949 \times 0.00203 = 1.926$) were living there, which does not make sense and thus leads us to believe it is an error. Because the variable \textbf{urban} is strongly correlated with density (`r sprintf('%.1f%%', cor(raw_data$density[-which.min(raw_data$density)],raw_data$urban[-which.min(raw_data$density)])*100)`), which we can be seen in the correlation matrix later in this report, and because they are intuitively related (urban areas usually have higher densities), we replace the __density__ outlier with the mean of the non-urban densities since our outlier's record is in a non-urban region.
+
+```{r}
+index <- raw_data$density == min(raw_data$density)
+raw_data$density[index] <- mean(raw_data$density[raw_data$urban == 0 & !index])
+```
+
+Therefore, the __density__ outlier is replaced with `r sprintf('%.3f', raw_data$density[index])`.
+
+When we look at the __polpc__ variable we see one ostensibly significant outlier with a value of `r sprintf('%0.5f', max(raw_data$polpc))`. If we run a univariate regression on the crime rate, we can see this outlier/leverage point has significant influence.
+
+```{r, fig.align='center', fig.height=3.7, fig.width=8, tidy = TRUE, echo = FALSE}
+par(mfrow = c(1, 2))
+index <- raw_data$polpc == max(raw_data$polpc)
+boxplot(raw_data$polpc, horizontal = TRUE, xlab = 'polpc', 
+        main = 'boxplot of polpc', pch = 20)
+symbols(x = raw_data$polpc[index], y = 1, circles = rep(0.0003, sum(index)), 
+        add = TRUE, fg = 'red', lwd = 2, inches = FALSE)
+plot(raw_data$polpc, raw_data$crmrte, pch = 20, main = 'crime rate vs. polpc', 
+     xlab = 'polpc', ylab = 'crime rate')
+symbols(x = raw_data$polpc[index], y = raw_data$crmrte[index], circles = rep(0.0003, sum(index)), 
+        add = TRUE, fg = 'red', lwd = 2, inches = FALSE)
+abline(lm('crmrte ~ polpc', data = raw_data), col = 'red')
+abline(lm('crmrte ~ polpc', data = raw_data[!index, ]), col = 'blue')
+legend(0.0045, 0.08, c('With Outlier', 'Without Outlier'), lty = c(1, 1), 
+       col = c('red', 'blue'), lwd = 1.5, bty = 'n', cex = 0.8)
+par(mfrow = c(1, 1))
+index <- which.max(raw_data$polpc)
+lm_impute <- lm('polpc ~ prbarr + taxpc', data = raw_data[-index, ])
+```
+
+This outlier is `r sprintf('%.1f', (max(raw_data$polpc) - max(raw_data$polpc[-which.max(raw_data$polpc)])) / sd(raw_data$polpc))` standard deviations aways from the second largest value, which is quite extreme. To avoid the high influence, we decide to replace this value. We use __prbarr__ and __taxpc__ to impute a value for this outlier since these variables are highly correlated (`r sprintf('%.1f%%', cor(raw_data$polpc, raw_data$prbarr) * 100)` & `r sprintf('%.1f%%', cor(raw_data$polpc, raw_data$taxpc) * 100)`) and intuitively related to police per capita. For higher numbers of police per capita, we would expect higher probabilities of arrests and a higher tax revenue per capita to pay for them. We fit a linear model to impute a value for police per capita. The $\text{R}^2$ (`r sprintf('%.1f%%',summary(lm_impute)$r.squared)`) of this model is not very high but nevertheless, this approach retains more information than replacing with the mean or top-coding with an arbitrarily-chosen value.
+
+```{r}
+index <- which.max(raw_data$polpc)
+raw_data$polpc[index] <- predict(
+  lm('polpc ~ prbarr + taxpc', data = raw_data[-index, ]), raw_data[index, ])
+```
+
+Therefore, the __polpc__ outlier is replaced with `r sprintf('%.5f', raw_data$polpc[index])`.
+
+When we look at the __wser__ variable, we see another significant outlier with a value of `r sprintf('%0.1f', max(raw_data$wser))`. If we run a univariate regression on the crime rate, we can see this leverage point has significant influence.
+
+```{r, fig.align='center', fig.height=3.7, fig.width=8, echo = FALSE}
+par(mfrow = c(1, 2))
+index <- raw_data$wser == max(raw_data$wser)
+boxplot(raw_data$wser, horizontal = TRUE, xlab = 'wser', 
+        main = 'boxplot of wser', pch = 20)
+symbols(x = raw_data$wser[index], y = 1, circles = rep(50, sum(index)), 
+        add = TRUE, fg = 'red', lwd = 2, inches = FALSE)
+plot(raw_data$wser, raw_data$crmrte, pch = 20, ylab = 'crime rate',
+     xlab = 'wser', main = 'crime rate vs. wser')
+symbols(x = raw_data$wser[index], y = raw_data$crmrte[index], 
+  circles = rep(50, sum(index)), add = TRUE, fg = 'red', 
+  lwd = 2, inches = FALSE)
+abline(lm('crmrte ~ wser', data = raw_data), col = 'red')
+abline(lm('crmrte ~ wser', data = raw_data[!index, ]), col = 'blue')
+legend(1000, 0.08, c('With Outlier', 'Without Outlier'), lty = c(1, 1),
+       col = c('red', 'blue'), lwd = 1.5, bty = 'n', cex = 0.8)
+par(mfrow = c(1, 1))
+```
+
+This outlier is `r sprintf('%.1f', (max(raw_data$wser) - max(raw_data$wser[-which.max(raw_data$wser)])) / sd(raw_data$wser))` standard deviations aways from the second largest value, which is quite extreme. Looking at historical inflation rates, we can estimate what $1 in 1987 would be worth today (in 2019). This outlier implies a 1987 weekly wage of $`r sprintf('%0.1f', max(raw_data$wser))` which is equivalent to a 2019 weekly wage (inflation adjusted) of $`r sprintf('%0.1f', max(raw_data$wser)*2.255)`, or an annual salary of $`r sprintf('%0.0f', max(raw_data$wser)*2.255*52)`. It could be the case that this particular county has only one business in the service industry consisting of only a few people, with the owner making a few times more than this wage, thus drastically skewing the distribution upwards. In any case, if this point is correct, we believe it to be an aberartion and not a good representation due to a small sample size within the county (assuming our thought process is correct). Therefore we decide to replace it. Since we do not know which other wage variables are most appropriate to use to impute a value, we use all of the wage variables along with K-Nearest-Neighbours to impute a value for this outlier. This KNN approach to impute a value for __wser__ retains more information than simply replacing with the mean or top-coding with an arbitrarily-chosen value.
+
+```{r}
+wage <- c('wcon', 'wtuc', 'wtrd', 'wfir', 'wser', 'wmfg', 'wfed', 'wsta', 'wloc')
+index <- which.max(raw_data$wser)
+raw_data$wser[index] <- NA
+raw_data[, wage] <- DMwR::knnImputation(raw_data[, wage])
+```
+
+Therefore, the __wser__ outlier is replaced with `r sprintf('%.1f', raw_data$wser[index])`.
+
+Lastly, we assume __west__ and __central__ are mutually exclusive in the sense that if __west__ equals 0, the record represents the eastern or central region of the state and represents the west if __west__ equals 1. However, there is one record where __west__ and __central__ are both equal to 1, which is not possible. Because __west__ is highly correlated with __pctmin80__ (`r sprintf('%.1f%%',cor(raw_data$pctmin80,raw_data$west)*100)`), we use this to see whether this record is likely in the western region or not.
+
+```{r, echo = FALSE}
+index <- raw_data$west == 1 & raw_data$central == 1
+west_pctmin80 <- mean(raw_data$pctmin80[raw_data$west[!index] == 1])
+not_west_pctmin80 <- mean(raw_data$pctmin80[raw_data$west[!index] == 0])
+outlier_pctmin80 <- raw_data$pctmin80[index]
+```
+
+We can see the mean __pctmin80__ in the west is `r sprintf('%.1f%%',west_pctmin80)` and `r sprintf('%.1f%%',not_west_pctmin80)` outside of the west while our anomalous record's __pctmin80__ is `r sprintf('%.1f%%',outlier_pctmin80)`. Therefore, we classify this outlier as west. 
+
+```{r}
+raw_data$central[index] <- 0
+```
+
+Looking at the county split, we can see that of the 90 counties in our dataset, `r sum(raw_data$west)` (`r sprintf('%.1f%%',sum(raw_data$west)/90*100)`) are in the west, `r sum(raw_data$central)` (`r sprintf('%.1f%%',sum(raw_data$central)/90*100)`) are in the center and the remaining `r sum(raw_data$central==0&raw_data$west==0)` (`r sprintf('%.1f%%',sum(raw_data$central==0&raw_data$west==0)/90*100)`) we classify as east. We looked online to see what the actual regional split is, but there is no standard way of classifying west, central and eastern North Carolina. While we assume that the classification method used for our data was robust, any conclusions relating to the regionality will have limitations.
+
+Before moving on, we would like to mention that we considered creating a new variable to proxy income inequality, which we believe is positively correlated with crime-rate. This proxy would have been computed using the nine wage variables by subtracting the highest wage from the lowest wage for each record. However, we did not believe this was a reasonable good proxy for this variable and prefer a more appropriate measure of income inequality such as the Gini-coefficient for each county.
+
+```{r, include=FALSE }
+#Is the outcome variable (or variables) appropriate? 
+#- scatter plot (jitter if necessary)
+#- fit line
+#Is there a thorough univariate analysis of the outcome variable. 
+
+#Did the team identify at least two key explanatory variables and perform a thorough univariate analysis of each? 
+#Did the team clearly state why they chose these explanatory variables, does this explanation make sense in term of their research question? 
+#Did the team consider available variable transformations and select them with an eye towards model plausibility and interperability? 
+#Are transformations used to expose linear relationships in scatterplots? 
+#Is there enough explanation in the text to understand the meaning of each visualization?
+
+#Overall, is each step in the model building process supported by EDA? 
+```
+
+## Dependent Variable
+
+```{r, fig.align='center', fig.height=3, fig.width=8, echo = FALSE}
+# function to plot histogram
+histogram_plot <- function(x, xlab, ...) {
+  if (length(list(...)) > 0) {
+    hist(x, col="blue", xlab = xlab, ylab = 'frequency', cex = 0.85, ...)
+  } else {
+    hist(x, col="blue", breaks = 20, main = paste0('histogram of ', xlab), 
+       xlab = xlab, ylab = 'frequency', cex = 0.85, ...)
+  }
+}
+par(mfrow = c(1, 3))
+histogram_plot(raw_data$crmrte, 'crime rate')
+histogram_plot(log(raw_data$crmrte), 'log(crime rate)')
+boxplot(log(raw_data$crmrte), horizontal = TRUE, xlab = 'log(crmrte)', 
+        main = 'boxplot of log(crmrte)', pch = 20)
+symbols(x = min(log(raw_data$crmrte)), y = 1, circles = rep(0.11, sum(index)), 
+        add = TRUE, fg = 'red', lwd = 2, inches = FALSE)
+```
+
+To understand the determinants of crime and how to influence them through local government, it is necessary first to establish what we are aiming to explain - the dependent variable. Our conceptual definition of crime is the number of crimes committed per person in a given area. We operationalize this with the __crmrte__ variable which represents the crime-rate or crimes committed per person in a given county. Since we are given county-level data, we find little difference between our conceptual and operational definition.
+
+After the examination of the crime-rate  (__crmrte__) histogram, we can see a positive skew. For our linear regression model, it is preferable that our variables are normally distributed, especially our dependent variable as any unexplained variation will show up in the residuals, which we assume to be normally distributed. We can see that this log-transformed distribution looks much more symmetric and normal. With this transformation, the interpretation changes to a percent change, which is easier to understand than an increase in crimes per person. Furthermore, the exact interpretation of the slope coefficients depends on whether we have a log-lin or log-log relationship. For a log-lin relationship, a one-unit increase in the independent variable results in a change of $[(\text{exp}({\beta})-1)\times100]$ percent in __crmrte__. This will be the interpretation of any untransformed variables. For a log-log relationship, a 1% increase in the independent variable results in a change of $\beta$ percent in __crmrte__. This will be the interpretation of any log-transformed variables. One assumption we have to make here is that __crmrte__ is not equal to zero since the log of zero is undefined. Nevertheless, we feel comfortable asserting that in any given year, there will be at least one crime committed per county. Lastly, we want to mention that we see one __log(crmrte)__ value that seems like an outlier in the boxplot above. We will pay attention to this leverage point (#51) later to see if it has influence.
+
+```{r}
+raw_data$crmrte <- log(raw_data$crmrte)
+names(raw_data)[names(raw_data) == 'crmrte'] <- 'log(crmrte)'
+```
+
+## Exploratory Data Analysis
+
+Before we jump into building the three models, we are interested in exploring the relationships between the possible independent variables and our dependent variable.
+
+We begin by looking at the univariate linear regressions for all the possible independent variables (every y-axis represents __log(crmrte)__).
+
+```{r, fig.align='center', fig.height=2, fig.width=8, echo = FALSE}
+# function to plot univariate analysis
+univariate_plot <- function(x, y, xlab, ylab, ...) {
+  plot(x, y, xlab=xlab, ylab=ylab, main = paste0(ylab, ' vs ', xlab), cex = 0.85, ...)
+  model1 <- lm(y ~ x)
+  abline(model1, col='blue', lwd=2)
+}
+par(mfrow = c(1, 5), oma = c(0, 4.1, 0, 0), mar = c(4.1, 0.4, 3.1, 0.4))
+for (i in 4:25) {
+  if (mod(i + 1, 5) == 0) {
+    univariate_plot(raw_data[, i], raw_data$`log(crmrte)`, names(raw_data)[i], 'log(crmrte)', cex.main = 0.95)
+  } else {
+    univariate_plot(raw_data[, i], raw_data$`log(crmrte)`, names(raw_data)[i], 'log(crmrte)', cex.main = 0.95,
+      yaxt = 'n')
+  }
+}
+par(mfrow = c(1, 1), oma = c(0, 0, 0, 0), mar = c(5.1, 4.1, 4.1, 2.1))
+```
+
+\pagebreak
+
+We notice a few non-linear patters in the scatterplots of __log(crmrte)__ vs. __prbarr__, __polpc__, __density__, __taxpc__, __mix__ and __pctymle__ which leads us to believe a log-transformation may be appropriate for these variables. We explore this below in the histograms and scatterplots.
+
+```{r, fig.align='center', fig.height=2.4, fig.width=8, echo = FALSE}
+par(mfrow = c(1, 3))
+histogram_plot(raw_data$prbarr, 'prbarr')
+histogram_plot(log(raw_data$prbarr), 'log(prbarr)')
+univariate_plot(log(raw_data$prbarr), raw_data$`log(crmrte)`, 'log(prbarr)', 'log(crime rate)')
+par(mfrow = c(1, 1))
+```
+```{r, fig.align='center', fig.height=2.4, fig.width=8, echo = FALSE}
+par(mfrow = c(1, 3))
+histogram_plot(raw_data$polpc, 'polpc')
+histogram_plot(log(raw_data$polpc), 'log(polpc)')
+univariate_plot(log(raw_data$polpc), raw_data$`log(crmrte)`, 'log(polpc)', 'log(crime rate)')
+par(mfrow = c(1, 1))
+```
+```{r, fig.align='center', fig.height=2.4, fig.width=8, echo = FALSE}
+par(mfrow = c(1, 3))
+histogram_plot(raw_data$density, 'density')
+histogram_plot(log(raw_data$density), 'log(density)')
+univariate_plot(log(raw_data$density), raw_data$`log(crmrte)`, 'log(density)', 'log(crime rate)')
+par(mfrow = c(1, 1))
+```
+```{r, fig.align='center', fig.height=2.4, fig.width=8, echo = FALSE}
+par(mfrow = c(1, 3))
+histogram_plot(raw_data$taxpc, 'taxpc')
+histogram_plot(log(raw_data$taxpc), 'log(taxpc)')
+univariate_plot(log(raw_data$taxpc), raw_data$`log(crmrte)`, 'log(taxpc)', 'log(crime rate)')
+par(mfrow = c(1, 1))
+```
+```{r, fig.align='center', fig.height=2.4, fig.width=8, echo = FALSE}
+par(mfrow = c(1, 3))
+histogram_plot(raw_data$mix, 'mix')
+histogram_plot(log(raw_data$mix), 'log(mix)')
+univariate_plot(log(raw_data$mix), raw_data$`log(crmrte)`, 'log(mix)', 'log(crime rate)')
+par(mfrow = c(1, 1))
+```
+```{r, fig.align='center', fig.height=2.4, fig.width=8, echo = FALSE}
+par(mfrow = c(1, 3))
+histogram_plot(raw_data$pctymle, 'pctymle')
+histogram_plot(log(raw_data$pctymle), 'pctymle')
+univariate_plot(log(raw_data$pctymle), raw_data$`log(crmrte)`, 'pctymle', 'log(crime rate)')
+par(mfrow = c(1, 1))
+```
+
+We can see the distributions of __prbarr__, __polpc__, __density__, __taxpc__, __mix__ and __pctymle__ all have a positive skew and after the log-transformation, the distributions all look more symmetric and normal. The univariate linear fits look much more appropriate as well after the log-transform. However, we do not feel comfortable log-transforming percentages that are bound between 0-100% because we don't find it appropriate to use a log-transformation on variables where an obvious maximum exists; in our case 100%. Therefore, despite the log-transformation helping the variables follow a more normal distribution, we decide against this. We also considered transforming these variables to a log-odds ratio but since we have some values at 100%, which would result in undefined values, we decide against this in addition to the difficult interpretation of the resulting slope coefficients. Therefore, we do not log-transform __prbarr__ and __pctymle__. Moving to the other log-transformations, one assumption we have to make, despite all of these variables being ratios and thus having a true zero, is that they are not equal to zero since the log-transform of zero is undefined. For __polpc__, __density__ and __taxpc__ we feel comfortable making this assumption since we assume each county has at least one person, one police officer and some tax revenues. For __mix__ we cannot be sure this variable is non-zero for other years and other counties not included our dataset. Nevertheless, we make this assumption.
+
+The log-transform changes the interpretation of these three variables to a log-log relation: (__log(polpc)__) a 1% increase in __polpc__ will result in a $\beta_{polpc}$% change in crime-rate; (__log(density)__) a 1% increase in __density__ will result in a $\beta_{density}$% change in crime-rate; (__log(taxpc)__) a 1% increase in __taxpc__ will result in a $\beta_{taxpc}$% change in crime-rate; and (__log(mix)__) a 1% increase in __mix__ will result in a $\beta_{mix}$% change in crime-rate. The log-transformation helps with the interpretation as it changes to a percent change in these ratios, which is easier to grasp than an increase of one in police per capita, people per square mile, tax per capita and face-to-face vs other types of offences. 
+
+```{r, echo = FALSE}
+log_transform <- function(data, name) {
+  data[[name]] <- log(data[[name]])
+  names(data)[names(data) == name] <- paste0('log(', name, ')')
+  return(data)
+}
+log_odds_transform <- function(data, name) {
+  data[[name]] <- log((data[[name]]/100) / (1 - data[[name]]/100))
+  names(data)[names(data) == name] <- paste0('logOdds(', name, ')')
+  return(data)
+}
+raw_data <- log_transform(raw_data, 'polpc')
+raw_data <- log_transform(raw_data, 'density')
+raw_data <- log_transform(raw_data, 'taxpc')
+raw_data <- log_transform(raw_data, 'mix')
+``` 
+
+We now explore the correlation matrix of the dependent and candidate independent variables.
+
+```{r, echo = FALSE}
+corr <- cor(raw_data[, -c(1, 2)])
+corrplot(corr, tl.col = 'black', method = 'circle', tl.cex = 0.85, number.cex = 0.85)
+```
+
+From the correlation matrix, we can see the variables with the strongest correlation with __log(crmrte)__ are __log(density)__ (`r sprintf('%.1f%%',corr['log(crmrte)','log(density)']*100)`), __log(polpc)__ (`r sprintf('%.1f%%', corr['log(crmrte)','log(polpc)']*100)`), __wfed__ (`r sprintf('%.1f%%', corr['log(crmrte)','wfed']*100)`), __urban__ (`r sprintf('%.1f%%',corr['log(crmrte)','urban']*100)`), __prbconv__ (`r sprintf('%.1f%%', corr['log(crmrte)','prbconv']*100)`), __prbarr__ (`r sprintf('%.1f%%',corr['log(crmrte)','prbarr']*100)`) and __west__ (`r sprintf('%.1f%%',corr['log(crmrte)','west']*100)`). For these variables, we also note a strong linear relationship in the univariate scatterplots above, particularly for __log(density)__. The least correlated variables are __log(mix)__ (`r sprintf('%.1f%%', corr['log(crmrte)','log(mix)']*100)`), __prbpris__ (`r sprintf('%.1f%%', corr['log(crmrte)','prbpris']*100)`) and __avgsen__ (`r sprintf('%.1f%%', corr['log(crmrte)','avgsen']*100)`). Looking at the univariate scatterplots of these three latter variables, we can comfirm that no discernable linear relation seems to exist.
+
+Among the wage variables, we notice a particularily strong inter-variable positive correlations among all the nine wage variables (__wcon__, __wtuc__, __wtrd__, __wfir__, __wser__, __wmfg__, __wfed__, __wsta__, __wloc__), which can cause multicollinearity within a model if more than one of these variables is included. We addresss this concern later for model 3 when we include all variables. Furthermore, we notice three strong correlations among candidate independent variables: (1) __west__ and __pctmin80__ (`r sprintf('%.1f%%',corr['west','pctmin80']*100)`); (2) __log(polpc)__ and __log(taxpc)__ (`r sprintf('%.1f%%', corr['log(polpc)','log(taxpc)']*100)`); (3) __log(density)__ and __urban__ (`r sprintf('%.1f%%', corr['log(density)','urban']*100)`); and (4) __prbarr__ and __log(mix)__ (`r sprintf('%.1f%%', corr['prbarr','log(mix)']*100)`). The negative correlation between __west__ and __pctmin80__ may imply that percent of minorities is higher in the central and eastern regions than the western region. The positive correlation between __log(polpc)__ and __log(taxpc)__ makes sense as higher tax revenues are needed to fund a higher police presence. And lastly, the positive correlation between __log(density)__ and __urban__ is expected since an urban county tends to have a higher population density than a rural county. The positive correlation between __prbarr__ and __log(mix)__ leads us to believe that there are more arrests for face-to-face offenses than for other types of offenses.
+
+## Model Building Process
+
+We build three models in this report. The first (base) model will be built with only 1-2 key variables that are influenceable by the local government to reduce crime. The second model will add covariates to increase the accuracy of the base model by adding variables via a naunced, iterative approach. Care is given to ensure interpretation and intuition of results. The third model will then include all other remaining variables to test the robustness of our models 1 & 2. 
+
+The following report does not perform any validations such as K-folds cross-validation on the results. The aim of this report is to find preliminary results that can be explored further in subsequent study. 
+
+The model we find to be most important is model 2. Therefore, for this model, we will present a more detailed assessment of the CLM assumptions along with responses to any violations.
+
+## Model 1
+
+We build our base model by identifying key variables that are (1) strongly correlated with the dependent variable, (2) within the control or influence of local government to reduce crime and (3) intuitively related with crime. 
+
+We let the data speak to us and begin by looking at the variables most correlated with our dependent variable. From the variables __log(crmrte)__ is most correlated with (__log(density)__, __log(polpc)__, __wfed__, __urban__, __prbconv__, __prbarr__, __west__), only __log(polpc)__, __prbconv__ and __prbarr__ are influenceable by local government. Local government can influence these variables by: (1) prioritizing local law enforcement to focus on making arrests ($\uparrow$ __prbarr__); (2) implement more robust procedures for evidence collection ($\uparrow$ __prbconv__); (3) speed up court process for convictions ($\uparrow$ __prbconv__); and (4) increase spending on law enforcement to increase police presence ($\uparrow$ __polpc__). These present actionable policy recommendations, which we are interested in.
+
+We expect the relation of __prbarr__ and __prbconv__ to both be negative with the crime-rate since these two variables are a risk to someone considering committing a crime as they represent the probability of "getting caught" and "not getting away with it". Our expectations are in-line with the correlations of these two variables. For __log(polpc)__ we expect the relationship to also be negative with the crime-rate since we argue that a more concentrated police presence (__polpc__) should reduce crime-rate. However, this explanation is not in-line with the correlation of __log(polpc)__ with __log(crmrte)__, which is positive. This is counterintuitive. The issue here, we believe, is that we have a snapshot of data for one year (1987) and cannot see how these variables evolved through time to assess causation. We believe a time-dimension is playing a key role here. For example, we can think that police per capita is a decision that is taken ex-post, after many crimes have happened. This implies the causal relationship $\uparrow$ __crmrte__ $\rightarrow$ $\uparrow$ __polpc__.  Based on this, and for our snapshot, we could assume that police presence is proportional to crime-rate with no other relationship. However, we do not feel comfortable with this assertion and therefore drop this variable from consideration.
+
+This leaves us with __prbarr__ and __prbconv__ as our key variables. Because the correlation between these two variables is fairly low (`r sprintf('%.1f%%', corr['prbarr','prbconv']*100)`), we are not worried about any multicollinearity being injected into our model and are therefore comfortable using both for our base model. The model we fit is:
+
+$$log(\text{crmrte}_i) = \beta_0 + \beta_{\text{prbarr}} \cdot  \text{prbarr}_i + \beta_{\text{prbconv}} \cdot \text{prbconv}_i + u_i$$
+
+```{r, echo = FALSE}
+mdl_1 <- lm(`log(crmrte)` ~ 1 + prbarr + prbconv, data = raw_data)
+```
+
+```{r, tidy = TRUE, results = 'asis', echo = FALSE}
+covariate_names <- c('prbarr', 'prbconv')
+stargazer(list(mdl_1, mdl_1), dep.var.labels = 'log(crmrte)', covariate.labels = covariate_names, float = FALSE, header = FALSE, 
+  se = list(coeftest(mdl_1)[, 2], coeftest(mdl_1, vcov=vcovHC)[, 2]), star.cutoffs = c(0.05, 0.01, 0.001),
+  column.labels = c('Unadjusted SE', 'HC-Adjusted SE'))
+```
+
+Our base model explains ($\text{R}^2$) `r sprintf('%.1f%%', summary(mdl_1)$r.squared * 100)` of the variation in __log(crmrte)__, the adjusted-$\text{R}^2$ is `r sprintf('%.1f%%', summary(mdl_1)$adj.r.squared * 100)` and the AIC is `r sprintf('%.2f',AIC(mdl_1))`. The way we interpret this model is as follows: (__prbarr__) for an increase of 1 in __prbarr__ (which is scaled by 100%), _ceteris paribus_, crime-rate decreases by `r sprintf('%.2f%%',abs(exp(mdl_1$coefficients[[2]])-1)*100)` and (__prbconv__) for an increase of 1 in __prbconv__ (which is scaled by 100%), _ceteris paribus_, crime-rate decreases by `r sprintf('%.2f%%',abs(exp(mdl_1$coefficients[[3]])-1)*100)`. Both coefficients are highly statistically significant (<0.1%) regardless if the unadjusted or HC-adjusted standard errors are used. Furthermore, the signs of our two covariates are in-line with what we expect them to be.
+
+```{r, echo = FALSE}
+raw_data$`(prbarr+prbconv)` <- raw_data$prbarr + raw_data$prbconv
+t_mdl_1 <- lm(`log(crmrte)`~ 1 + prbarr + `(prbarr+prbconv)`, data = raw_data)
+```
+
+Since $\hat{\beta}_{\text{prbarr}}$ and $\hat{\beta}_{\text{prbconv}}$ are both highly statistically significant, we can see evidence that local government can reduce the crime-rate by increasing the risk to potential criminals from committing a crime by increasing the probability of arrest and probability of conviction. This can be achieved by (1) prioritizing local law enforcement to focus on making arrests ($\uparrow$ __prbarr__); (2) implement more robust procedures for evidence collection ($\uparrow$ __prbconv__); and (3) speed up court process for convictions ($\uparrow$ __prbconv__). For local political campaigns in North Carolina looking to reduce crime as a campaign promise, this gives evidence on how they can achieve this. However, does increasing __prbarr__ have the same effect on reducing crime as does increasing __prbconv__? We test for this with the hypothesis that $H_0: \beta_{prbarr} - \beta_{prbconv} = 0$ and $H_A: \beta_{prbarr} - \beta_{prbconv} \neq 0$. We choose a two-sided test here since it is harder to reject the null hypothesis, but we note that $\hat{\beta}_{prbarr} > \hat{\beta}_{prbconv}$ and will thus make a conclusion based on this inequality. We do this test by setting 
+
+$$\theta_1 = \beta_{prbarr} - \beta_{prbconv}\;,$$
+re-writing the hypothesis as 
+$$H_0: \theta_1 = 0 \; \text{and} \; H_A: \theta_1 \neq 0\;,$$ 
+and re-writing our population model as 
+$$\text{log}(crmrte)=\beta_0+(\theta_1+\beta_{prbconv}) prbarr+\beta_{prbconv}\cdot prbconv+u\;.$$
+$$\text{log}(crmrte)=\beta_0+\theta_1 prbarr+\beta_{prbconv}(prbarr+prbconv)+u$$
+When we run this regression, we reject the null hypothesis that $\theta_1=0$ at the 5% significance level as the t-statistic (using HC-adjusted SE) for the slope coefficient $\theta_1$ is `r sprintf('%.2f',coeftest(t_mdl_1,vco=vcovHC)[2,3])` and the p-value is `r sprintf('%.3f%%',coeftest(t_mdl_1,vco=vcovHC)[2,4]*100)`. Therefore, we can say that there is a statistically significant difference between $\beta_{prbarr}$ and $\beta_{prbconv}$ and the data suggests that reducing __prbarr__ has a stronger effect on reducing crime than __prbconv__. This is intuitive as from the standpoint of a potential criminal; they need to first worry about the probability of getting caught (arrested) and then conditional on them being caught, the probability of them being convicted. Therefore, since the arrest comes before the conviction, it is a stronger short-term risk factor and will most likely impact a criminal's decision more. 
+
+Even though from a statistical perspective these two factors are significant, are they practical? Looking at __prbarr__, we can see a `r sprintf('%.2f%%',abs(exp(mdl_1$coefficients[[2]])-1)*100)` reduction in crime-rate for a 1% increase in __prbarr__ is quite important. Likewise, a `r sprintf('%.2f%%',abs(exp(mdl_1$coefficients[[3]])-1)*100)` reduction in crime-rate for a 1% increase in __prbconv__ is also quite important, but as confirmed in our t-test above ($H_0:\beta_{prbarr}-\beta_{prbconv}=0$), the effect of __prbconv__ is less than __prbarr__'s (almost half). Nevertheless, both are practical from the standpoint of reducing crime.
+
+## Model 2
+
+Our goal for model 2 is to increase the accuracy of our base model with additional covariates. We assume that the quadratic curve in both the "Residuals vs Fitted" and "Scale-Location" plots of model 1, pictured later in the report (CLM Assumptions section), is a result of omitted variables in our model 1. We considered a forward-stepwise regression based on AIC but decided against this due to the risk of blind data dredging and the chance of obtaining a model that may have unintuitive coefficients. We, therefore, take a more nuanced, iterative approach of adding covariates by considering (1) correlation with model residuals, (2) intuition on the relationship with crime-rate, (3) correlation with the crime-rate and (4) correlation with existing covariates.
+
+We begin by looking at which variables are most correlated with the base model's residuals.
+
+```{r, fig.align='center', fig.height=2.5, fig.width=8, echo = FALSE}
+par(mfrow = c(1, 3))
+univariate_plot(raw_data$wfed, mdl_1$residuals, 'wfed', 'residuals')
+univariate_plot(raw_data$`log(density)`, mdl_1$residuals, 'log(density)', 'residuals')
+univariate_plot(raw_data$`log(polpc)`, mdl_1$residuals, 'log(polpc)', 'residuals')
+par(mfrow = c(1, 1))
+``` 
+```{r, echo = FALSE, comment=NA}
+cor_res_1_1 <- cor(cbind(mdl_1$residuals, raw_data[, -c(1, 2, 3)]))[, 1][order(abs(cor(cbind(mdl_1$residuals, raw_data[, -c(1, 2, 3)]))[, 1] * 100), decreasing = TRUE)][-1]
+round(cor_res_1_1[1:3], 2)
+```
+
+```{r, echo = FALSE}
+mdl_2_1 <- mdl_1
+mdl_2_2 <- lm(`log(crmrte)` ~ 1 + prbarr + prbconv + `log(density)`, data = raw_data)
+```
+
+The three most correlated variables with the base model's residuals are __wfed__ (`r sprintf('%.1f%%',cor_res_1_1[[1]]*100)`), __log(density)__ (`r sprintf('%.1f%%',cor_res_1_1[[2]]*100)`) and __log(polpc)__ (`r sprintf('%.1f%%',cor_res_1_1[[3]]*100)`). From the univariate plot above, we can can see that there is a strong linear fit with residuals with __wfed__ and __log(density)__, and a moderate fit with __log(polpc)__. Of these variables, we see that __wfed__ has a positive correlation with __log(crmrte)__ (`r sprintf('%.1f%%',corr['log(crmrte)','wfed']*100)`), which we cannot explain intuitively since we don't see how nominal wage is related to crime-rate. We could rationalize this as a higher wage implying higher income inequality and thus a higher crime-rate but this explanation is stretched; therefore, we drop this variable. Next we have __log(density)__ which, as we saw in the EDA section, has the highest correlation with __log(crmrte)__ among all variables (`r sprintf('%.1f%%',corr['log(crmrte)','log(density)']*100)`). This makes sense as an area with a higher concentration of people offers exponentially more opportunities for criminal offenses. Furthermore, we can see from the loading plot of the first two principal components of the three variables that the angles between the vectors of __prbarr__ and __log(density)__ and __prbconv__ and __log(density)__ are quite large, implying that __log(density)__ is fairly uncorrelated with the two other existing covariates, which means this shold be a good uncorrelated combination. Therefore we add __log(density)__ to our base model which increases our adjusted-$R^2$ from `r sprintf('%.1f%%', summary(mdl_2_1)$r.squared*100)` to `r sprintf('%.1f%%', summary(mdl_2_2)$r.squared*100)` and decreases our AIC from `r sprintf('%.2f',AIC(mdl_2_1))` to `r sprintf('%.2f',AIC(mdl_2_2))`.
+
+```{r, echo = FALSE, fig.height=3.5, fig.width=8}
+factoextra::fviz_pca_var(prcomp(raw_data[, c('prbarr', 'prbconv', 'log(density)')], scale = TRUE, center = TRUE))
+```
+
+```{r, fig.align='center', fig.height=2.5, fig.width=8, echo = FALSE}
+par(mfrow = c(1, 3))
+univariate_plot(raw_data$pctmin80, mdl_2_2$residuals, 'pctmin80', 'residuals')
+univariate_plot(raw_data$west, mdl_2_2$residuals, 'west', 'residuals')
+univariate_plot(raw_data$`log(polpc)`, mdl_2_2$residuals, 'log(polpc)', 'residuals')
+par(mfrow = c(1, 1))
+``` 
+```{r, echo = FALSE, comment=NA}
+cor_res_1_2 <- cor(cbind(mdl_2_2$residuals, raw_data[, -c(1, 2, 3)]))[, 1][order(abs(cor(cbind(mdl_2_2$residuals, raw_data[, -c(1, 2, 3)]))[, 1] * 100), decreasing = TRUE)][-1]
+round(cor_res_1_2[1:3], 2)
+```
+
+```{r, echo = FALSE}
+mdl_2_3 <- lm(`log(crmrte)` ~ 1 + prbarr + prbconv + `log(density)` + west, data = raw_data)
+```
+
+Moving to the next iteration, we find the three most correlated variables with the new residuals are __pctmin80__ (`r sprintf('%.1f%%',cor_res_1_2[[1]]*100)`), __west__ (`r sprintf('%.1f%%',cor_res_1_2[[2]]*100)`) and __log(polpc)__ (`r sprintf('%.1f%%',cor_res_1_2[[3]]*100)`). __pctmin80__ has a (`r sprintf('%.1f%%',corr['log(crmrte)','pctmin80']*100)`) correlation with __log(crmrte)__ while __west__ has a `r sprintf('%.1f%%',corr['log(crmrte)','west']*100)` correlation with __log(crmrte)__. The correlation of __pctmin80__ is plausible as areas with higher proportions of minorities may have more difficultly integrating with society and resort to crime. The negative correlation with __west__ is also sensible since we note from our EDA that crime-rate seems to be higher in the central and eastern regions. We hypothesize that once we add one of these two variables, the other's correlation with the residuals will drop due to the the high correlation between __pctmin80__ and __west__. The correlation of __pctmin80__ with the existing covariates are low and range from `r sprintf('%.1f%%',min(cor(raw_data[,c('prbarr','prbconv','log(density)','pctmin80')])[4,-4])*100)` to `r sprintf('%.1f%%',max(cor(raw_data[,c('prbarr','prbconv','log(density)','pctmin80')])[4,-4])*100)`, while the correlation of __west__ with the existing covariates are also low and range from `r sprintf('%.1f%%',min(cor(raw_data[,c('prbarr','prbconv','log(density)','west')])[4,-4])*100)` to `r sprintf('%.1f%%',max(cor(raw_data[,c('prbarr','prbconv','log(density)','west')])[4,-4])*100)`. The univariate fits above show a strong linear relationship for both __pctmin80__ and __west__ with the residuals, but particularly for __west__, where we can see that for __west__ equal to 1, all the residuals are either near 0 or below 0 with no residuals above around 0.2. There definitely seems to be some benefit in adding this variable. For this reason, as well as __west__'s stronger correlation with __log(crmrte)__ than __pctmin80__, and since __west__ and __pctmin80__ have similar correlations with existing covariates, it is added to the model. Adding this variable increases our adjusted-$\text{R}^2$ from `r sprintf('%.1f%%', summary(mdl_2_2)$r.squared*100)` to `r sprintf('%.1f%%', summary(mdl_2_3)$r.squared*100)` and decreases our AIC from `r sprintf('%.2f',AIC(mdl_2_2))` to `r sprintf('%.2f',AIC(mdl_2_3))`.
+
+```{r, fig.align='center', fig.height=2.5, fig.width=8, echo = FALSE}
+par(mfrow = c(1, 3))
+univariate_plot(raw_data$central, mdl_2_3$residuals, 'central', 'residuals')
+univariate_plot(raw_data$`log(polpc)`, mdl_2_3$residuals, 'log(polpc)', 'residuals')
+univariate_plot(raw_data$pctmin80, mdl_2_3$residuals, 'pctmin80', 'residuals')
+par(mfrow = c(1, 1))
+``` 
+```{r, echo = FALSE, comment=NA}
+cor_res_1_3 <- cor(cbind(mdl_2_3$residuals, raw_data[, -c(1, 2, 3)]))[, 1][order(abs(cor(cbind(mdl_2_3$residuals, raw_data[, -c(1, 2, 3)]))[, 1] * 100), decreasing = TRUE)][-1]
+round(cor_res_1_3[1:3], 2)
+```
+
+```{r, echo = FALSE}
+mdl_2_4 <- lm(`log(crmrte)` ~ 1 + prbarr + prbconv + `log(density)` + west + central, data = raw_data)
+```
+
+Moving to the next iteration, we find the three most correlated variables with the new residuals are __central__ (`r sprintf('%.1f%%',cor_res_1_3[[1]]*100)`), __log(polpc)__ (`r sprintf('%.1f%%',cor_res_1_3[[2]]*100)`) and __pctmin80__ (`r sprintf('%.1f%%',cor_res_1_3[[3]]*100)`). We can see the univariate plots above with the residuals. The slopes are in line with the correlations and we see a particularly strong linear fit with __log(polpc)__. We first notice that the correlation of __pctmin80__ with the residuals dropped from `r sprintf('%.1f%%',cor_res_1_2[['pctmin80']]*100)` to `r sprintf('%.1f%%',cor_res_1_3[['pctmin80']]*100)`, as expected, from adding __west__ to the model. Because of __pctmin80__'s strong correlation with __west__ (`r sprintf('%.1f%%',corr['pctmin80','west']*100)`), we do not consider it to avoid multicollinearity. Furthermore, we note that __log(polpc)__ has a `r sprintf('%.1f%%',corr['log(crmrte)','log(polpc)']*100)` correlation with __log(crmrte)__. As mentioned in our model 1 building process, we expected a negative relationship with __log(crmrte)__ but because we only have a snapshot of the data from 1987 and not from previous years, we cannot assess its causation. We could assume __polpc__ is proportional to crime-rate but we do not feel comfortable making this assumption; therefore we drop __log(polpc)__. This leaves us with __central__ which has a `r sprintf('%.1f%%',corr['log(crmrte)','central']*100)` correlation with __log(crmrte)__. The signs makes sense as we know from our EDA, the western region has a lower crime-rate than the central and eastern regions, with the eastern region having a crime-rate more or less in-line the central region. Moving to the correlations of __central__ with the existing covariates, we note some covariation with correlations ranging from `r sprintf('%.1f%%',min(cor(raw_data[,c('prbarr','prbconv','log(density)','west','central')])[5,-5])*100)` to `r sprintf('%.1f%%',max(cor(raw_data[,c('prbarr','prbconv','log(density)','west','central')])[5,-5])*100)`. However, we notice that when we add this covariate to the model, the VIF scores range from `r sprintf('%.2f',min(vif(mdl_2_4)))` to `r sprintf('%.2f',max(vif(mdl_2_4)))`, which is nothing to worry about and therefore, we add this variable to our model. This increases our adjusted-$\text{R}^2$ from `r sprintf('%.1f%%', summary(mdl_2_3)$r.squared*100)` to `r sprintf('%.1f%%',summary(mdl_2_4)$r.squared*100)` and decreases our AIC from `r sprintf('%.2f',AIC(mdl_2_3))` to `r sprintf('%.2f',AIC(mdl_2_4))`.
+
+```{r, echo = FALSE, comment=NA}
+cor_res_1_4 <- cor(cbind(mdl_2_4$residuals, raw_data[, -c(1, 2, 3)]))[, 1][order(abs(cor(cbind(mdl_2_4$residuals, raw_data[, -c(1, 2, 3)]))[, 1] * 100), decreasing = TRUE)][-1]
+round(cor_res_1_4[1:5], 2)
+```
+
+Now when we look at the variables most correlated with our new residuals, we see that the five most correlated variables are __log(polpc)__, __wfed__, __wtuc__, __pctmin80__ and __wmfg__. As mentioned before, we do not feel comfortable adding wage variables due to their positive correlation with __log(crmrte)__, which we cannot explain. Furthermore, __pctmin80__ is `r sprintf('%.1f%%',corr['west','pctmin80']*100)` correlated with __west__ and therefore do not feel comfortable adding this variable; and lastly, since the correlation of __log(polpc)__ is positive with __log(crmrte)__, and we do not feel comfortable with this positive relation, we drop this variable as well. Therefore we end our iterative covariate search and stick with the model composed of __prbarr__, __prbconv__, __log(density)__, __west__ and __central__. The model we fit is:
+
+$$log(\text{crmrte}_i) = \beta_0 + \beta_{\text{prbarr}} \cdot  \text{prbarr}_i + \beta_{\text{prbconv}} \cdot \text{prbconv}_i + \beta_{log(\text{density})} \cdot log(\text{density}_i) +\beta_{\text{west}} \cdot \text{west}_i + \beta_{\text{central}} \cdot \text{central}_i  + u_i$$
+
+```{r, echo = FALSE}
+mdl_2 <- lm(`log(crmrte)` ~ 1 + prbarr + prbconv + `log(density)` + west + central, data = raw_data)
+wald_2 <- waldtest(mdl_2, mdl_1, vcov=vcovHC)
+t_mdl_2 <- lm(`log(crmrte)`~ 1 + prbarr + `(prbarr+prbconv)` + `log(density)` + west + central, data = raw_data)
+raw_data$`(west+central)` <- raw_data$west + raw_data$central
+t_mdl_3 <- lm(`log(crmrte)`~ 1 + prbarr + prbarr + prbconv + `log(density)` + west + `(west+central)`, data = raw_data)
+```
+
+```{r, tidy = TRUE, results = 'asis', echo = FALSE}
+covariate_names <- c('prbarr', 'prbconv', 'log(density)', 'west', 'central')
+stargazer(list(mdl_2, mdl_2), dep.var.labels = 'log(crmrte)', covariate.labels = covariate_names, float = FALSE, header = FALSE, 
+  se = list(coeftest(mdl_2)[, 2], coeftest(mdl_2, vcov=vcovHC)[, 2]), star.cutoffs = c(0.05, 0.01, 0.001),
+  column.labels = c('Unadjusted SE', 'HC-Adjusted SE'))
+```
+
+Our final model (depicted on the next page) explains ($\text{R}^2$) `r sprintf('%.1f%%', summary(mdl_2)$r.squared*100)` of the variation in __log(crmrte)__. The adjusted-$\text{R}^2$ is `r sprintf('%.1f%%', summary(mdl_2)$adj.r.squared * 100)` and the AIC is `r sprintf('%.2f',AIC(mdl_2))`. The way we interpret this model is as follows: (__prbarr__) for an increase of 1 in __prbarr__ (which is scaled by 100%), _ceteris paribus_, crime-rate decreases by `r sprintf('%.2f%%',abs(exp(mdl_2$coefficients[[2]])-1)*100)`; (__prbconv__) for an increase of 1 in __prbconv__ (which is scaled by 100%), _ceteris paribus_, crime-rate decreases by `r sprintf('%.2f%%',abs(exp(mdl_2$coefficients[[3]])-1)*100)`; (__log(density)__) for a 1% increase in __density__, _ceteris paribus_, crime-rate increases by `r sprintf('%.2f%%',abs(mdl_2$coefficients[[4]]))`; (__west__) when the county is in the western region, _ceteris paribus_, crime-rate is `r sprintf('%.2f%%',abs(exp(mdl_2$coefficients[[5]])-1)*100)` lower than in the eastern region; and (__central__) when the county is in the central region, _ceteris paribus_, crime-rate is `r sprintf('%.2f%%',abs(exp(mdl_2$coefficients[[6]])-1)*100)` lower than the eastern region. The signs of our five covariates are in-line with what we expect them to be and that they are all statistically significant at the 0.1% significance level regardless if we use the unadjusted or HC-adjusted White standard errors. 
+
+To ensure that our model 2 has statistical significance over our base model 1, we test the joint hypothesis that
+$$H_0:\beta_{log(density)}=0,\beta_{west}=0,\beta_{central}=0$$
+$$H_A:\text{atleast one coefficient is not equal to 0}\;.$$
+
+We do this by comparing the RSS from our base model and our model 2 using the Wald test that follows an F-distribution. With this test we reject the null hypothesis (using HC-adjusted SE) that $\beta_{log(density)}$, $\beta_{west}$ and $\beta_{central}$ are jointly equal to 0 at the 0.1% significance level with an F-statistic of `r sprintf('%.2f',wald_2$F[[2]])` and a very small p-value close to 0%. This gives us comfort that the variables we added increased statistical significance to the base model.
+
+Our two key variables, __prbarr__ and __prbconv__, are still statistically significant after adding the new covariates, however, we notice the slope coefficients' magnitudes have been reduced from `r sprintf('%.3f',mdl_1$coefficients[[2]])` to `r sprintf('%.3f',mdl_2$coefficients[[2]])` for __prbarr__ and from `r sprintf('%.3f',mdl_1$coefficients[[3]])` to `r sprintf('%.3f',mdl_2$coefficients[[3]])` for __prbconv__. Despite this, we can still see evidence that local government can reduce crime by increasing the risk to potential criminals from committing a crime by increasing the probability of arrest and probability of conviction. As mentioned in model 1, this can be achieved by (1) prioritizing local law enforcement to focus on making arrests ($\uparrow$ __prbarr__); (2) implement more robust procedures for evidence collection ($\uparrow$ __prbconv__); and (3) speed up court process for convictions ($\uparrow$ __prbconv__). For local political campaigns in North Carolina looking to reduce crime as a campaign promise, this gives evidence on how they can achieve this. 
+
+As we did in model 1, we are interested in testing whether $\beta_{prbarr}>\beta_{prbconv}$. We do this with the two-sided hypothesis
+
+$$H_0: \beta_{prbarr} - \beta_{prbconv} = 0 \;\text{and}\; H_A: \beta_{prbarr} - \beta_{prbconv} \neq 0\;.$$
+
+Again, we choose a two-sided test here since it is harder to reject the null hypothesis, but we note that $\hat{\beta}_{prbarr} > \hat{\beta}_{prbconv}$ and will thus make a conclusion based on this inequality (if we reject the two-sided hypothesis, we will also reject the one-sided hypothesis that $\beta_{prbarr}>\beta_{prbconv}$. We first define
+
+$$\theta_1 = \beta_{prbarr} - \beta_{prbconv}$$
+
+and re-write our population model as 
+
+$$\text{log}(crmrte)=\beta_0+\theta_1 prbarr+\beta_2(prbarr+prbconv)+\beta_3 log(density) + \beta_4 west + \beta_5 central+u\;.$$
+
+When we run this regression, we reject the null hypothesis that $\theta_1=0$ at the 10% significance level as the t-statistic (using HC-adjusted SE) for the slope coefficient $\theta_1$ is `r sprintf('%.2f',coeftest(t_mdl_2,vco=vcovHC)[2,3])` and the p-value is `r sprintf('%.2f%%',coeftest(t_mdl_2,vco=vcovHC)[2,4]*100)`. This implies there is marginal statistical significance that the two coefficients are statistically different from each other and that reducing __prbarr__ has a stronger effect on reducing crime than __prbconv__. 
+
+Even though from a statistical perspective, these two factors are marginally significant, we are interested in whether they are practical. Looking at __prbarr__, we can see a `r sprintf('%.2f%%',abs(exp(mdl_2$coefficients[[2]])-1)*100)` reduction in crime-rate for a 1% increase in __prbarr__ is reasonably important. Likewise, a `r sprintf('%.2f%%',abs(exp(mdl_2$coefficients[[3]])-1)*100)` reduction in crime-rate for a 1% increase in __prbconv__ is also fairly important. We see the magnitudes of these two coefficients slowly converging together going from our base model to this model. In any case, both are practical from the standpoint of reducing crime and thus of interest to local government.
+
+Lastly, we believe there is some benefit for political campaigns that can be gleaned from the coefficients for __west__ and __central__ dummy variables. Since we have three regions (west, central, east), when both __west__ and __central__ are equal to 0, the model gives the crime-rate for the eastern region. In this case the crime-rate is `r sprintf('%.2f%%',abs(exp(mdl_2$coefficients[[5]])-1)*100)` lower in the west than in the east and the crime-rate is `r sprintf('%.2f%%',abs(exp(mdl_2$coefficients[[6]])-1)*100)` lower in the center than in the east. This implies that crime-rate is more influencable in the east than in the west and center. Therefore, for any action, targeting the reduction of crime in the east is likely to have higher impact than in the center or west. The next question we ask is whether there is a statistically significant difference between the west (__west__) and the center (__central__). As above, we test this by defining $\theta_2 = \beta_{west} - \beta_{central}$, writing our hypothesis as 
+
+$$H_0: \theta_2=0 \;\text{vs.}\; H_A: \theta_2 \neq 0\;,$$
+and re-writing our population model as
+$$\text{log}(crmrte)=\beta_0+ \beta_1 prbarr+\beta_2 prbconv + \beta_3 log(density) + \theta_2 west + \beta_5 (west + central) +u\;.$$
+Again, we choose a two-sided test here since it is harder to reject the null hypothesis, but we note that $\hat{\beta}_{west} < \hat{\beta}_{central}$ and will thus make a conclusion based on this inequality. When we run this regression, we reject the null hypothesis at the 1% significance level with a t-statistic (using HC-adjusted SE) for the slope coefficient $\theta_2$ of `r sprintf('%.2f',coeftest(t_mdl_3,vco=vcovHC)[5,3])` and a p-value is `r sprintf('%.2f%%',coeftest(t_mdl_3,vco=vcovHC)[5,4]*100)`. This implies there is high statistical significance that the two coefficients are statistically different from each other and that there is evidence there is less crime in the west than in the central region. Therefore, a political campaign and any associated action in the eastern region of North Carolina is likely to be more effective than in the central or western region. 
+
+## Model 3
+
+We now move on to our third model, which we use to test the robustness of our models 1 & 2. We add all the remaining variables; however before we do this, we have to solve an issue. As discovered in the EDA section, we notice strong positive correlations among the nine wage variables. This can be seen in the loading plot below of the first two principal components of these nine variables. 
+
+```{r, echo = FALSE, fig.height=3, fig.width=8}
+wage <- c('wcon', 'wtuc', 'wtrd', 'wfir', 'wser', 'wmfg', 'wfed', 'wsta', 'wloc')
+factoextra::fviz_pca_var(prcomp(raw_data[, wage], scale = TRUE, center = TRUE))
+```
+
+Including all of these covariates in a model would inevitably result in quite a lot of multicollinearity. Therefore, we consider creating an aggregate wage variable by averaging across the nine wages. Looking at the boxplot below; we notice the underlying distributions of the different wages vary widely, which is an issue: wages with more substantial variances will drown out the variation of wages with smaller variances. 
+
+```{r, echo = FALSE, eval = TRUE, fig.height=4, fig.width=8}
+wage <- c('wcon', 'wtuc', 'wtrd', 'wfir', 'wser', 'wmfg', 'wfed', 'wsta', 'wloc')
+boxplot(raw_data[, wage], main = 'boxplot of wage variables', ylab = 'weekly average wage ($)')
+```
+
+We solve this problem by first standardizing all wage variables to have zero-mean and unit-variance and then compute the mean across the standarized wages. This new variable, __aggwage__, remains positively correlated with __log(crmrte)__ (`r sprintf('%.1f%%',cor(raw_data["log(crmrte)"],apply(scale(raw_data[,wage]),1,mean))*100)`). Since this is a standardized variable, the interpretation changes: for a 1 standard deviation increase in aggregate wage, crime-rate will change by $[(\text{exp}({\beta_{aggwage}})-1)\times100]$%. 
+
+```{r}
+wage <- c('wcon', 'wtuc', 'wtrd', 'wfir', 'wser', 'wmfg', 'wfed', 'wsta', 'wloc')
+raw_data$aggwage <- apply(scale(raw_data[, wage]), 1, mean)
+```
+
+With this, we run our regression with the wage variables replaced by __aggwage__. 
+
+```{r, echo = FALSE}
+mdl_3 <- lm(`log(crmrte)` ~ 1 + prbarr + prbconv + `log(density)` + west + 
+  central + prbpris + avgsen + `log(polpc)` + `log(taxpc)` + urban + pctmin80 + aggwage + 
+  `log(mix)` + pctymle, data = raw_data)
+wald_3 <- waldtest(mdl_3, mdl_2, vcov=vcovHC)
+t_mdl_2_3 <- lm(`log(crmrte)` ~ 1 + prbarr + `(prbarr+prbconv)` + `log(density)` + west + 
+  central + prbpris + avgsen + `log(polpc)` + `log(taxpc)` + urban + pctmin80 + aggwage + 
+  `log(mix)` + pctymle, data = raw_data)
+t_mdl_3_3 <- lm(`log(crmrte)` ~ 1 + prbarr + prbconv + `log(density)` + west + 
+  `(west+central)` + prbpris + avgsen + `log(polpc)` + `log(taxpc)` + urban + pctmin80 + aggwage + 
+  `log(mix)` + pctymle, data = raw_data)
+```
+
+Our final model explains ($\text{R}^2$) `r sprintf('%.1f%%', summary(mdl_3)$r.squared*100)` of the variation. The adjusted-$\text{R}^2$ is `r sprintf('%.1f%%', summary(mdl_3)$adj.r.squared * 100)` and the AIC is `r sprintf('%.2f',AIC(mdl_3))`. The way we interpret this model is as follows: (__prbarr__) for a 1% increase in __prbarr__, _ceteris paribus_, crime-rate decreases by `r sprintf('%.2f%%',abs(mdl_3$coefficients[[2]]))`; (__prbconv__) for an increase of 1 in __prbconv__ (which is scaled by 100), _ceteris paribus_, crime-rate decreases by `r sprintf('%.2f%%',abs(exp(mdl_3$coefficients[[3]])-1)*100)`; (__log(density)__) for a 1% increase in __density__, _ceteris paribus_, crime-rate increases by `r sprintf('%.2f%%',abs(mdl_3$coefficients[[4]]))`; (__west__) when the county is in the western region, _ceteris paribus_, crime-rate is `r sprintf('%.2f%%',abs(exp(mdl_3$coefficients[[5]])-1)*100)` lower than in the eastern region; (__central__) when the county is in the central region, _ceteris paribus_, crime-rate is `r sprintf('%.2f%%',abs(exp(mdl_3$coefficients[[6]])-1)*100)` lower than the eastern region; (__prbpris__) for an increase of 1 in __prbpris__ (which is scaled by 100), _ceteris paribus_, crime-rate increases by `r sprintf('%.2f%%',abs(exp(mdl_3$coefficients[[7]])-1)*100)`; (__avgsen__) for an increase of 1 year in __avgsen__, _ceteris paribus_, crime-rate decreases by `r sprintf('%.2f%%',abs(exp(mdl_3$coefficients[[8]])-1)*100)`; (__log(polpc)__) for a 1% increase in __polpc__, _ceteris paribus_, crime-rate increases by `r sprintf('%.2f%%',abs(mdl_3$coefficients[[9]]))`; (__log(taxpc)__) for a 1% increase in __taxpc__, _ceteris paribus_, crime-rate decreases by `r sprintf('%.2f%%',abs(mdl_3$coefficients[[10]]))`; (__urban__) when the county is in an urban area, _ceteris paribus_, crime-rate is `r sprintf('%.2f%%',abs(exp(mdl_3$coefficients[[11]])-1)*100)` lower than in rural areas; (__pctmin80__) for an increase of 1 in __pctmin80__ (which is scaled by 100), _ceteris paribus_, crime-rate increases by `r sprintf('%.2f%%',abs(exp(mdl_3$coefficients[[12]])-1)*100)`; (__aggwage__) for an increase of 1 standard deviation in __aggwage__, _ceteris paribus_, crime-rate increases by `r sprintf('%.2f%%',abs(exp(mdl_3$coefficients[[13]])-1)*100)`; (__log(mix)__) for a 1% increase in __mix__, _ceteris paribus_, crime-rate increases by `r sprintf('%.2f%%',abs(mdl_3$coefficients[[14]]))`; and (__pctymle__) for a 1% increase in __pctymle__, _ceteris paribus_, crime-rate decreases by `r sprintf('%.2f%%',abs(mdl_3$coefficients[[15]]))`. It is reasurring to see the signs for our three main covariates in model 2 (__prbarr__, __prbconv__, __log(density)__, __west__ and __central__) all remain the same and their statistical significance remain at the 5% significance level (using HC-adjusted White SE), while none of the new covariates added in model 3 are significant.
+
+Since we use model 3 as a robustness check on model 2, we are interested in whether all the additional covariates in model three have slope coefficients that are jointly equal to 0.
+
+$$H_0: \beta_{prbpris}=\beta_{avgsen}=\beta_{log(polpc)}=\beta_{log(taxpc)}=\beta_{urban}=\beta_{pctmin80}=\beta_{aggwage}=\beta_{log(mix)}=\beta_{pctymle}=0$$
+$$H_A: \text{atleast one coefficient is not equal to 0}$$
+
+We do this by comparing the RSS from our model 2 and our model 3 using the Wald test that follows an F-distribution. We reject the null hypothesis (using HC-adjusted SE) of all the additional slope coefficients being jointly equal to 0 with an F-statistic of `r sprintf('%.2f',wald_3$F[[2]])` and a p-value of `r sprintf('%.2f%%',wald_3['Pr(>F)'][[1]][[2]]*100)`. This makes us confident in our model 2 covariate selection since the additional regressors do not jointly add statistical significance to the model.
+
+In line with our narrative for model 2, we check whether $\beta_{prbarr} > \beta_{prbconv}$ and whether $\beta_{west} < \beta_{central}$ still holds for our model 3. Again, we use a two-sided test here since it is harder to reject than a one-sided test. We expect the strength of these tests to be reduced due to multicollinearity of all the additional covariates increasing the standard errors of our coefficients. We first set $\theta_1 = \beta_{prbarr} - \beta_{prbconv}$ and define the hypothesis test as $H_0: \theta_1 = 0$ vs. $H_A: \theta_1 \neq 0$. After we re-write our population model to account for this new definition, we run the regression and fail to reject the null hypothesis with a test-statistic (using HC-adjusted SE) for the slope coefficient $\theta_1$ of `r sprintf('%.2f',coeftest(t_mdl_2_3,vco=vcovHC)[2,3])` and a p-value of `r sprintf('%.2f%%',coeftest(t_mdl_2_3,vco=vcovHC)[2,4]*100)`. Likewise, by setting $\theta_2=\beta_{west} - \beta_{central}$, defining the hypothesis test as $H_0: \theta_2 = 0$ vs. $H_A: \theta_2 \neq 0$, re-writing the population model and running the regression, we fail to reject the null hypothesis of $\theta_2 = 0$ with a test-statistic for the slope coefficient for $\theta_2$ of `r sprintf('%.2f',coeftest(t_mdl_3_3,vco=vcovHC)[5,3])` and a p-value of `r sprintf('%.2f%%',coeftest(t_mdl_3_3,vco=vcovHC)[5,4]*100)`. Unfortunately our statistically significant differences vanish with our all-inclusive model 3 but this shouldn't be of too much concern since as we mentioned earlier, there is considerable multicollinearity added to the model to increase the standard errors which makes a lot of these tests lose their strength.
+
+Lastly, it is interesting to see that __prbpris__ does not affect the crime rate. We can view __prbarr__, __prbconv__ and __prbpris__ as three different levels of risk to criminals, all conditional on a state occuring. For example, __prbarr__ is the probability of getting arrested conditional on committing a crime, __prbconv__ is the probability of being convicted conditional on being arrested, and __prbpris__ is the probability of going to prison conditional on being convicted. These all present risks to someone looking to commit a crime. The probability of arrest is the first risk, followed by the probability of conviction and lastly, the probability of going to prison. It makes sense that __prbarr__ tends to have a more substantial effect on reducing crime-rate than __prbconv__, and __prbconv__ has a more substantial impact than __prbpris__. __prbpris__ is so far away that potential criminals may not even consider this since they first need to be caught and then once they have been caught, they have to be convicted. Therefore, this leads us to recommend that local government should focus less on putting people in prison and more on catching and convicting them, which seems to be a stronger deterrent to crime. A second added benefit of this is economics. It costs on average around $31,000 to incarcerate someone for one year. Reducing this, will most likely allow government to spend taxpayer's money more effectively in other areas.
+
+\begin{table}
+\centering
+```{r, tidy = TRUE, results = 'asis', echo = FALSE}
+covariate_names <- c('prbarr', 'prbconv', 'log(density)', 'west', 'central', 'prbpris', 'avgsen', 'log(polpc)', 'log(taxpc)', 'urban', 'pctmin80', 'aggwage', 'log(mix)', 'pctymle')
+stargazer(list(mdl_3, mdl_3), dep.var.labels = 'log(crmrte)', covariate.labels = covariate_names, float = FALSE, header = FALSE, 
+  se = list(coeftest(mdl_3)[, 2], coeftest(mdl_3, vcov=vcovHC)[, 2]), star.cutoffs = c(0.05, 0.01, 0.001),
+  column.labels = c('Unadjusted SE', 'HC-Adjusted SE'))
+```
+\end{table}
+\pagebreak
+
+## Summary Regression Table
+
+\begin{table}
+\centering
+```{r, tidy = TRUE, results = 'asis', echo = FALSE}
+stargazer(mdl_1, mdl_2, mdl_3, dep.var.labels = 'log(crmrte)', covariate.labels = covariate_names, 
+  float = FALSE, header = FALSE, se = list(coeftest(mdl_1, vcov=vcovHC)[, 2], coeftest(mdl_2, vcov=vcovHC)[, 2], coeftest(mdl_3, vcov=vcovHC)[, 2]), star.cutoffs = c(0.05, 0.01, 0.001))
+```
+\end{table}
+
+Looking at the juxtaposition of our three models, we can see that our two key variables - \textbf{prbarr} and \textbf{prbconv} - have a reasonably constant factor loading across the three models. The factor loadings from model 1 to model 2 do change a bit with the magnitudes being reduced; however, going from model 2 to model 3, the coefficients do not vary significantly. This suggests that our key variable coefficients are fairly robust and provides greater confidence in the key effects on reducing crime-rate. The practical significance of these two variables remains stable for all three models.
+
+Looking at __log(density)__, we can see that by adding all remaining variables in model 3 does reduce its slope coefficient from `r sprintf('%.3f',mdl_2$coefficients[[4]])` to `r sprintf('%.3f',mdl_3$coefficients[[4]])`. Furthermore, the slope coefficient for __west__ is also reduced by quite a bit from model 2 to model 3 from `r sprintf('%.3f',mdl_2$coefficients[[5]])` to `r sprintf('%.3f',mdl_3$coefficients[[5]])`, while __central__ remains fairly constant moving from `r sprintf('%.3f',mdl_2$coefficients[[6]])` to `r sprintf('%.3f',mdl_3$coefficients[[6]])`.
+
+## CLM Assumptions
+
+\smallskip
+
+In this section we will examine the six CLM (\textbf{C}lassical \textbf{L}inear \textbf{M}odel) assumptions for the three models. Our main focus will be model 2 as this is the model we find of most importance.
+
+#### CLM1: Linearity in Parameters
+
+All three linear models are linear in their parameters as each parameter is either a constant or multiplied by an independent variable.
+
+#### CLM2: Random Sampling
+
+We are using a single cross-section of data of a multi-year panel. Panel data is known to have limitations; however, as this is a multi-year panel, we assume that it is a balanced panel. Also, as the unit of measurement is a county, even though some crime characteristics in one county may influence the crime characteristics of another county for the purposes of this report we assume the individual counties are independent and identically distributed (i.i.d.). However, due to the outlined limitations of our data, our ability to make causal inferences about the population is also limited. Therefore we focus on the descriptive statistics analyzing the effects of certain variables on crime rates. Therefore, we do not see evidence of non-random sampling and believe having 90% of the state's counties in our dataset is a good representation of the population.
+
+```{r, echo = FALSE, eval = TRUE, fig.height=3, fig.width=8}
+par(mfrow = c(1, 3))
+for (i in 1:3) {
+  plot(eval(parse(text=paste0('mdl_', i))), which = 5, main = paste0('Model ', i), cex.lab = 0.95, 
+    cex.caption = 0.95, cex.axis = 0.95, cex.sub = 0.95)
+}
+par(mfrow = c(1, 1))
+```
+
+When we look at potential outliers in our models, we don't see any evidence of this with no residuals falling outside the 0.5 and 1.0 Cook's distance boundary. We can, however, identify the __log(crmrte)__ outlier we defined earlier in our report as record #51. We can see this point in all three plots, and despite this point having leverage, it has no influence. Particularly for model 2, there does not seem to be any points near the 0.5 boundary, which is reassuring. In any case, there does not seem to be evidence of non-random data from these plots.
+
+#### CLM3: No Perfect Multicollinearity
+
+We do not see any perfect multicollinearity for the three models. Below are the VIF values for model 2.
+
+```{r, echo = FALSE, comment = NA}
+vif_1 <- vif(mdl_1)
+vif_2 <- vif(mdl_2)
+vif_3 <- vif(mdl_3)
+vif_df <- as.data.frame(matrix(NA, ncol = length(vif_3), nrow = 3))
+names(vif_df) <- names(vif_3)
+rownames(vif_df) <- c('Model 1', 'Model 2', 'Model 3')
+vif_df[1, names(vif_df) %in% names(vif_1)] <- vif_1
+vif_df[2, names(vif_df) %in% names(vif_2)] <- vif_2
+vif_df[3, names(vif_df) %in% names(vif_3)] <- vif_3
+vif_2
+```
+
+The VIF values for model 2 range from `r sprintf('%.2f',min(vif_1))` to `r sprintf('%.2f',max(vif_1))` and are well below the thresholds of 5 and 10, therefore, we have no strong or perfect multicollinearity. The VIF value for model 1 is `r sprintf('%.2f',min(vif_1))` which also means we do not have any evidence of perfect multicollinearity. For model 3 the VIF values range from `r sprintf('%.2f',min(vif_3))` to `r sprintf('%.2f',max(vif_3))`. Here we can see the highest VIF value (`r sprintf('%.2f',max(vif_3))`), which is for __log(density)__, is high but still below the thresholds of 5 and 10, and therefore, there is no evidence of perfect or problematic multicollinearity. This VIF value is expected as __log(density)__ has strong correlations with __aggwage__ (`r sprintf('%.1f%%',cor(raw_data[['log(density)']],raw_data$aggwage)*100)`), __urban__ (`r sprintf('%.1f%%',corr['log(density)','urban']*100)`) and __log(polpc)__ (`r sprintf('%.1f%%',corr['log(density)','log(polpc)']*100)`). High wages and a high density of police officers is expected in a high density area; and urban by definition is usually a place with a high density of people.
+
+#### CLM4: Zero-Conditional Mean
+
+```{r, echo = FALSE, eval = TRUE, fig.height=3, fig.width=8}
+par(mfrow = c(1, 3))
+for (i in 1:3) {
+  plot(eval(parse(text=paste0('mdl_', i))), which = 1, main = paste0('Model ', i), cex.lab = 0.95, 
+    cex.caption = 0.95, cex.axis = 0.95, cex.sub = 0.95)
+}
+par(mfrow = c(1, 1))
+```
+
+We first notice that on the left side of the plot, we have a downward sloping LOESS curve, but this is due to one (outlier) point pulling the curve up in this area. Because we have too few data points on the far left side of the graph, the LOESS curve could be randomly high here because of this one fitted value. This fitted value is for the record with the outlier in __log(crmrte)__ that we identified in the ealier section. For these plot diagnostics, we focus on the LOESS curve from fitted values to the right of fitted values with value -4.5. For model 1 we see zero-conditional mean is violated as there is an upward sloping curve on the right side of the plot. For model 2 & 3 we do not see evidence of zero-conditional mean being violated with both curves reasonably flat. 
+
+Since we see a violation in this assumption for model 1, we can still claim exogeneity since we do not see any reason for any of the variables to be endogenous.
+
+#### CLM5: Homoscedasticity
+
+```{r, echo = FALSE, eval = TRUE, fig.height=3, fig.width=8}
+par(mfrow = c(1, 3))
+for (i in 1:3) {
+  plot(eval(parse(text=paste0('mdl_', i))), which = 3, main = paste0('Model ', i), cex.lab = 0.95, 
+    cex.caption = 0.95, cex.axis = 0.95, cex.sub = 0.95)
+}
+par(mfrow = c(1, 1))
+```
+
+Similar to CLM4, we notice on the left side of the plot one point that could randomly pull the curve up or down. For these plot diagnostics, we focus on the LOESS curve from fitted values to the right of fitted values with value -4.5. For model 1, we see evidence of heteroscedasticity with a sharp upward sloping LOESS curve on the right side of the plot. For models 2 & 3 we also see evidence of heteroscedasticity as the LOESS curves are sloping downward.
+
+This is confirmed with the Breush-Pagan test rejecting the null hypothesis of homoskedacticity for all three models at the 10% significance level with test statistics of `r sprintf('%.2f',bptest(mdl_1)$statistic)` (model 1), `r sprintf('%.2f',bptest(mdl_2)$statistic)` (model 2) and `r sprintf('%.2f',bptest(mdl_3)$statistic)` (model 3) and p-values of `r sprintf('%.3f%%',bptest(mdl_1)$p.value*100)` (model 1), `r sprintf('%.3f%%',bptest(mdl_2)$p.value*100)` (model 2) and `r sprintf('%.3f%%',bptest(mdl_3)$p.value*100)` (model 3).
+
+Since we see evidence of heteroscedasticity, we need to adjust the standard errors of our slope coefficients for our three models using homoscedastic-adjusted (White) standard errors. These errors tend to be more conservative and will, therefore, reduce the significance (t-statistics) of the slope coefficients.
+
+#### CLM6: Errors are Normally Distributed
+
+```{r, echo = FALSE, eval = TRUE, fig.height=3, fig.width=8}
+par(mfrow = c(1, 3))
+for (i in 1:3) {
+  histogram_plot(eval(parse(text=paste0('mdl_', i, '$residuals'))), 'residuals', 
+    main = paste0('Model ', i), breaks = 20)
+}
+par(mfrow = c(1, 1))
+```
+```{r, echo = FALSE, eval = TRUE, fig.height=3, fig.width=8}
+par(mfrow = c(1, 3))
+for (i in 1:3) {
+  plot(eval(parse(text=paste0('mdl_', i))), which = 2, main = paste0('Model ', i), cex.lab = 0.95, 
+    cex.caption = 0.95, cex.axis = 0.95, cex.sub = 0.95)
+}
+par(mfrow = c(1, 1))
+```
+
+For the three models, we can see the histograms of the errors have a shape that simulates a normal distribution. It seems that the errors from model 2 are most in-line with the normal distribution. 
+
+For model 1 we can see a diagonal line in the QQ-plot with a tail on the upper end and two outliers on the bottom end. Therefore, we see some evidence of non-normality here. When we check the Shapiro-Wilk test, we see it rejecting the null hypothesis of normality at the 10% significance level with a test statistic of `r sprintf('%.3f',shapiro.test(mdl_1$residuals)$statistic)` and a p-value of `r sprintf('%.3f%%',shapiro.test(mdl_1$residuals)$p.value*100)`.
+
+For model 2, we see a diagonal line in the QQ-plot with two outliers in the bottom end. Therefore, we don't see any evidence of non-normality here. This is confirmed with the Shapiro-Wilk test which fails to reject the null hypothesis of normality with a test statistic of `r sprintf('%.3f',shapiro.test(mdl_2$residuals)$statistic)` and a p-value of `r sprintf('%.3f%%',shapiro.test(mdl_2$residuals)$p.value*100)`.
+
+For model 3, we see a diagonal line in the QQ-plot with a heavy tail in the bottom end. Therefore, we see evidence of non-normality here. This is confirmed with the Shapiro-Wilk test which rejects the null hypothesis of normality at the 10% significance level with a test statistic of `r sprintf('%.3f',shapiro.test(mdl_3$residuals)$statistic)` and a p-value of `r sprintf('%.3f%%',shapiro.test(mdl_3$residuals)$p.value*100)`.
+
+#### CLM Conclusion
+
+For model 1, CLM assumption of zero-conditional mean (CLM4), homoscedasticity (CLM5) and normality (CLM6) were violated. Even though we do not have a zero-conditional mean, we claim exogeneity since we do not see any reason to believe there are any endogenous variables. This means that model 1's estimators are consistent (for large samples, $\lim_{n\rightarrow\infty} \hat{\beta} = \beta$). Furthermore, we do not have evidence that our sample is non-random, and because our sample is large (>30) we can still use the CLT to assume our sampling distributions follow a normal distribution. Therefore, our conclusions from model 1 are valid. The violation of CLM5 (homoscedasticity) implies that there might be some omitted variables that are showing up in the residuals. This was addressed in model 2, which has less drastic heteroscedasticity. Furthermore, for this model, instead of adding variables, we rely on HC-adjusted White standard errors (which are more conservative) for our test statistics.
+
+For model 2, only homoscedasticity (CLM5) was violated. There is clearly an improvement in the heteroscedasticity going from model 1 to model 2. This was most likely due to omitted variables being present in model 1, which were partially addressed in the model 2. Instead of looking for omitted variables though, we rely on HC-adjusted White standard errors for our test statistics. Since only CLM5 is violated, we can say that our model estimates are unbiased and consistent. Once we HC-adjust (White) our standard errors though, we can make inferences on our data. We can always resort to the CLT here - since our sample is large (>30) and there is no evidence of our dataset being a non-random sample - and with this, we can make inferences.
+
+For model 3, we see a violation in homoscedasticity (CLM5) and normality of errors (CLM6). The heteroscedasticity is improved in this model over model 2 as we added new variables that potentially limited any omitted variables. Nevertheless, as mentioned in our next section, there are some omitted variables not covered in our dataset that could be still affecting the heterogeneity of errors. With these violations, we can say the estimators of this model are unbiased and consistent. We again resort to the CLT here - since our sample is large (>30) and there is no evidence of our dataset being a non-random sample - and with this, we can make inferences.
+
+### 5.0 The Omitted Variables Discussion
+```{r, include=FALSE }
+#5-10 most important omitted variables that bias results you care about.
+#For each variable, 
+#- you should estimate what direction the bias is in. 
+#- argue whether the bias is large or small, 
+#- State whether you have any variables available that may proxy (even imperfectly) for the omitted variable. 
+#- Pay particular attention to whether each omitted variable bias is towards zero or away from zero. 
+
+#You will use this information to judge whether the effects you find are likely to be real, or whether they might be entirely an artifact of omitted variable bias.
+
+#Did the report miss any important sources of omitted variable bias? 
+#Are the estimated directions of bias correct? 
+#Was their explanation clear? 
+#Is the discussion connected to whether the key effects are real or whether they may be solely an artifact of omitted variable bias?
+```
+
+#### Unemployment
+
+Numerous studies examine the causal impact of unemployment on crime rate, yet our models do not include the unemployment variable. 
+
+An unemployed person is more likely to engage in criminal activity. We know that unemployment is generally higher among young adults. In our third model, this would indicate that the \textbf{pctymle} may include a noticeable amount of the unemployment bias.
+
+$$\text{crmrte} = \beta_0 + \beta_1 \cdot \text{pctymle} + \beta_2 \cdot \text{unemployment} + u$$
+$$\text{unemployment} = \alpha_0 + \alpha_1 \cdot \text{pctymle} + u $$
+
+We expect both the correlation between the \textbf{pctymle} and unemployment as well as with crime rate and unemployment to be positive, and therefore we estimate that the omitted variable bias is also positive. Equally, the beta for the \textbf{pctymle} is positive as such OLS estimates away from zero, gaining statistical significance.
+
+#### Poverty
+
+Generally, where poverty is prevalent in a community, crime may be seen as an opportunity for less-fortunate people to access goods, they may not be able to afford it. In a way, the prize may outweigh the risk or arrest or conviction. 
+
+We expect that unemployment and poverty are closely interrelated. Therefore we would expect that the impact of omitting poverty variable from our models to be consistent with unemployment.
+
+$$ \text{crmrte} = \beta_0 + \beta_1 \cdot \text{unemployment} + \beta_2 \cdot \text{poverty} + u $$
+$$ \text{poverty} = \alpha_0 + \alpha_1 \cdot \text{unemployment} + u $$
+
+
+#### Substance abuse
+
+An increase in crime rate may be tied to an increase in substance abuse. A person with a substance abuse problem may be unable to support their addiction without crime (\texttt{$ \beta_2 > 0 $}). 
+
+$$ \text{crmrte} = \beta_0 + \beta_1 \cdot \text{density} + \beta_2 \cdot \text{substance}\_ \text{abuse} + u$$
+
+Higher population density is likely to create greater number of opportunities, increase stress and temptation to turn to addictive substances. We, therefore, hypothesize that any bias resulting from substance abuse is likely to be related to \textbf{density} in our model.
+
+$$ \text{substance}\_ \text{abuse} = \alpha_0 + \alpha_1 \cdot \text{density} + u $$
+
+We believe that with higher population density the substance abuse is also higher \texttt{ $\alpha_1 > 0$ }. Given that the omitted variable bias is positive \texttt{ $\beta_2 \cdot \alpha_1 > 0 $ }, the OLS estimates would over estimate the marginal effect of density on crime rate. Furthermore it would scale the coefficient away from zero gaining statistical significance.
+
+#### Inequality of Income
+
+
+$$ \text{crmrte} = \beta_0 + \beta_1 \cdot \text{wage} + \beta_2 \cdot \text{income}\_ \text{inequality} + u$$
+$$ \text{income}\_\text{inequality} = \alpha_0 + \alpha_1 \cdot \text{wage} + u $$
+
+We believe a positive relation between income inequality and wages \texttt{ $\alpha_1 > 0$ }. Given that the omitted variable bias is positive \texttt{ $\beta_2 \cdot \alpha_1 > 0 $ } and the (\texttt{$ \beta_1 > 0 $}), the ols estimates would over estimate the marginal effect of wage on crime rate. However the magnitude of wage impact in our third model is relatively low and insignificant.
+
+#### Education
+
+We think that the levels of education and unlawful behaviour may be correlated. More specifically, individuals with lower attained education are more likely to turn to criminal activity to earn their living (\texttt{$ \beta_2 < 0 $}).
+
+The closest proxy variable to education would be the wage variables in our third model. Our model shows (\texttt{$ \beta_1 > 0 $}) and we expect that higher education would lead to higher wages (\texttt{$ \alpha_1 > 0 $}). The resulting bias therefore would be negative \texttt{ $\beta_2 \cdot \alpha_1 < 0 $ } and this would cause the OLS coefficient of wage to be scaled towards zero losing its statistical significance.
+
+$$ \text{crmrte} = \beta_0 + \beta_1 \cdot \text{wage} + \beta_2 \cdot \text{education} + u $$
+$$ \text{education} = \alpha_0 + \alpha_1 \cdot \text{wage} + u $$
+
+
+#### Family Conditions
+
+Neglect, abuse or lack of stability are likely to increase the chance of young people to act out and engage in unlawful activities (\texttt{$ \beta_2 > 0 $}). Some studies suggest that convicted criminals have experienced four to five times as many adverse formative events than non-criminal adults.
+
+$$ \text{crmrte} = \beta_0 + \beta_1 \cdot \text{density} + \beta_2 \cdot \text{family}\_ \text{neglect} + u $$
+$$ \text{family}\_ \text{neglect} = \alpha_0 + \alpha_1 \cdot \text{density} + u $$
+
+Any bias related to family neglect is likely to be embedded within our density variable in our main model. Higher population density (\texttt{$ \beta_1 > 0 $}) is likely to increase the pace of life which then leads to parents to be either more stressed and have less time to spend with their offspring. This then may lead to abuse or neglect respectively (\texttt{$ \alpha_1 > 0 $}). The resulting bias, therefore, would be \texttt{ $\beta_2 \cdot \alpha_1 > 0 $ } and this would cause the OLS coefficient of density to be scaled away from zero gaining statistical significance.  
+
+#### Mental Health
+
+Mental health may influence individual decision-making ability and morality; it is. Therefore, we hypothesize that elevated levels of mental health problems within a society are likely to contribute to an increased crime rate (\texttt{$ \beta_2 < 0 $}).
+
+$$ \text{crmrte} = \beta_0 + \beta_1 \cdot \text{density} + \beta_2 \cdot \text{mental}\_ \text{instability} + u $$
+$$ \text{mental}\_ \text{health} = \alpha_0 + \alpha_1 \cdot \text{density} + u $$
+
+In models 1, 2 and 3, we would expect density to be positively related to crime-rate (\texttt{$ \beta_1 > 0 $}) variable. We would expect that the increased stress, pace, noise, pollution of living in an area of high population density would contribute to decreased mental health (depression, anxiety etc.) (\texttt{$ \alpha_1 < 0 $}). The resulting bias, therefore, would once again be positive \texttt{ $\beta_2 \cdot \alpha_1 > 0 $} and this would cause the OLS coefficient of density to be scaled away from zero gaining statistical significance. 
+
+#### Effect on Main Variables
+
+Regarding our main variables \textbf{prbarr}, \textbf{prbconv} and \textbf{west}, we believe these variables are orthogonal to all of the listed omitted variables above, and therefore we expect little bias and thus see their effects as real. This implies that the recommendations we make in the next section are not impacted by the omitted variable bias discussed.
+
+### 6.0 Conclusion
+```{r, include=FALSE }
+#Does the conclusion address the high-level concerns of a political campaign? 
+#Does it raise interesting points beyond numerical estimates? 
+#Does it place relevant context around the results?
+```
+
+Following the analysis of the North Carolina county data, we propose that the local political campaigns:
+
+1. Focus on improving probability of arrest, for example - prioritize local law enforcement to focus on making more arrests to increase the probability of arrest. Based on the data, we conclude that this is the most significant deterrent from committing an offence (__prbarr__ $\uparrow$).
+
+2. Focus on improving probability of conviction, for example - implement stronger procedures on evidence collected by local law enforcement for each arrest to increase the probability of conviction. We recommend this as a way to increase the risk to potential criminals from committing an offence (__prbconv__ $\uparrow$). Or take action to speed up the court process for convicting criminals. This should increase the number of convictions and as a result, act as a deterrent to potential criminals (__prbconv__ $\uparrow$).
+
+3. Do not focus on probability of prison sentence as based on our analysis, unlike increasing arrest and conviction rate, an increase in the probability of prison sentence does not seem to have the desired effect on the crime rate. Therefore, we recommend not to focus on policies specifically aimed at increasing the probability of prison (non-significant __prbpris__).
+
+4. The priority of reducing crime as a campaign is likely to have highest impact in the eastern region of North Carolina, followed by the central region and finally the western region. This is because a message of reducing crime should resonate more in areas with higher crime-rates.
+
+Based on these recommendations, we would like to add a few remarks. Regarding recommendation 1, this policy must be correctly executed. Law enforcement should still retain their high standards for making an arrest and not arrest people without sufficient evidence. Arresting too many people who didn't commit a crime can backfire as public opinion of law enforcement would inevitably sour. What we imply with recommendation 1 is that law enforcement should prioritize their time to maximize the chance of making arrests. This can be done by having more police officers on the street at any point in time instead of them being in the office, or having law enforcement in general speed up the process required to make arrests. The same applies to recommendation 3; the process quality should not be put into jeopardy. 
+
+The following report did not perform any validations such as K-folds cross-validation on our results. Our aim for this report was to find some preliminary results that we can delve into more deeply in future research. 
+
+We hope you will find this report's analysis and recommendations actionable and we look forward to working with you again.  
+
+\bigskip
+\smallskip
+
+### __Walekova & Graf Consulting__
+
+\bigskip
+
+
+
