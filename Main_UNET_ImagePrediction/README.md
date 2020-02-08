@@ -6,4 +6,5 @@ data to predict future precipitation radar imagery based
 on current radar imagery. 
 
 ### Learning Progression
-!.[Learning Progression].(LearningProgression.JPG)
+
+![Learning Progression](LearningProgression.JPG)
